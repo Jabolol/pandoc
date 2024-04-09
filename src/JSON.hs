@@ -1,9 +1,8 @@
 {-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE TupleSections #-}
 
 module JSON
   ( parseJSON,
+    jToString,
   )
 where
 
@@ -11,6 +10,8 @@ import qualified Control.Applicative as A
 import qualified Control.Monad as M
 import qualified Data.Char as C
 import qualified Data.Functor as F
+import qualified Lib as L
+import qualified Shared as S
 
 data JValue
   = JString String
@@ -21,17 +22,20 @@ data JValue
   | JArray [JValue]
   deriving (Eq, Ord)
 
+jToString :: JValue -> String
+jToString (JString s) = s
+jToString (JNumber s [] 0) = show s
+jToString (JNumber s f 0) = show s ++ "." ++ concatMap show f
+jToString (JNumber s [] e) = show s ++ "e" ++ show e
+jToString (JNumber s f e) = show s ++ "." ++ concatMap show f ++ "e" ++ show e
+jToString (JBool b) = show b
+jToString JNull = "null"
+jToString (JObject o) = "{" ++ showObject o ++ "}"
+jToString (JArray a) = "[" ++ showArray a ++ "]"
+
 instance Show JValue where
   show :: JValue -> String
-  show (JString s) = show s
-  show (JNumber s [] 0) = show s
-  show (JNumber s f 0) = show s ++ "." ++ concatMap show f
-  show (JNumber s [] e) = show s ++ "e" ++ show e
-  show (JNumber s f e) = show s ++ "." ++ concatMap show f ++ "e" ++ show e
-  show (JBool b) = show b
-  show JNull = "null"
-  show (JObject o) = "{" ++ showObject o ++ "}"
-  show (JArray a) = "[" ++ showArray a ++ "]"
+  show = jToString
 
 showObject :: [(String, JValue)] -> String
 showObject [] = ""
@@ -43,192 +47,131 @@ showArray [] = ""
 showArray [x] = show x
 showArray (x : xs) = show x ++ ", " ++ showArray xs
 
-newtype Parser i o = Parser {parse :: i -> Maybe (i, o)}
+jNull :: S.Parser String JValue
+jNull = S.string "null" F.$> JNull
 
-instance Functor (Parser i) where
-  fmap :: (a -> b) -> Parser i a -> Parser i b
-  fmap f parser = Parser $ fmap (fmap f) . parse parser
-
-instance Applicative (Parser i) where
-  pure :: a -> Parser i a
-  pure x = Parser $ pure . (,x)
-
-  (<*>) :: Parser i (a -> b) -> Parser i a -> Parser i b
-  x <*> y = Parser $ \i -> case parse x i of
-    Just (i', f) -> fmap f <$> parse y i'
-    Nothing -> Nothing
-
-instance A.Alternative (Parser i) where
-  empty :: Parser i a
-  empty = Parser $ const A.empty
-
-  (<|>) :: Parser i a -> Parser i a -> Parser i a
-  x <|> y = Parser $ \i -> parse x i A.<|> parse y i
-
-instance Monad (Parser i) where
-  (>>=) :: Parser i a -> (a -> Parser i b) -> Parser i b
-  x >>= f = Parser $ \i -> case parse x i of
-    Just (i', a) -> parse (f a) i'
-    Nothing -> Nothing
-
-matches :: (a -> Bool) -> Parser [a] a
-matches p = Parser $ \case
-  (x : xs) | p x -> Just (xs, x)
-  _ -> Nothing
-
-char :: Char -> Parser String Char
-char c = matches (== c)
-
-digit :: Parser String Int
-digit = C.digitToInt <$> matches C.isDigit
-
-string :: String -> Parser String String
-string "" = pure ""
-string (x : xs) =
-  (:)
-    <$> char x
-    <*> string xs
-
-jNull :: Parser String JValue
-jNull = string "null" F.$> JNull
-
-jBool :: Parser String JValue
+jBool :: S.Parser String JValue
 jBool =
-  (string "true" F.$> JBool True)
-    A.<|> (string "false" F.$> JBool False)
+  (S.string "true" F.$> JBool True)
+    A.<|> (S.string "false" F.$> JBool False)
 
-jString :: Parser String JValue
-jString = JString <$> (char '"' *> jString') -- 1
+jString :: S.Parser String JValue
+jString = JString <$> (S.char '"' *> jString')
   where
     jString' = do
       optFirst <- A.optional jsonChar
       case optFirst of
-        Nothing -> "" <$ char '"'
+        Nothing -> "" <$ S.char '"'
         Just first -> do
           rest <- A.many jsonChar
-          _ <- char '"'
+          _ <- S.char '"'
           pure (first : rest)
 
-digitsToNumber :: Integer -> Integer -> String -> Integer
-digitsToNumber _ acc [] = acc
-digitsToNumber base acc (d : ds) =
-  digitsToNumber
-    base
-    (acc * base + toInteger (C.digitToInt d))
-    ds
-
-digitOneToNine :: Parser String Char
-digitOneToNine = matches $ \c -> C.isDigit c && c /= '0'
-
-digits :: Parser String String
-digits = A.some $ matches C.isDigit
-
-jUInt :: Parser String Integer
+jUInt :: S.Parser String Integer
 jUInt =
-  (\d ds -> digitsToNumber 10 0 (d : ds))
-    <$> digitOneToNine
-    <*> digits
+  (\d ds -> L.digitsToNumber 10 0 (d : ds))
+    <$> L.digitOneToNine
+    <*> L.digits
     A.<|> fromIntegral
-      <$> digit
+      <$> S.digit
 
-jInt' :: Parser String Integer
-jInt' =
-  signedInt
-    <$> A.optional (char '-')
+jIntNegative :: S.Parser String Integer
+jIntNegative =
+  L.signedInt
+    <$> A.optional (S.char '-')
     <*> jUInt
 
-signedInt :: Maybe Char -> Integer -> Integer
-signedInt (Just '-') = negate
-signedInt _ = id
-
-jsonChar :: Parser String Char
+jsonChar :: S.Parser String Char
 jsonChar =
-  string "\\\""
+  S.string "\\\""
     F.$> '"'
-    A.<|> string "\\\\"
+    A.<|> S.string "\\\\"
       F.$> '\\'
-    A.<|> string "\\/"
+    A.<|> S.string "\\/"
       F.$> '/'
-    A.<|> string "\\b"
+    A.<|> S.string "\\b"
       F.$> '\b'
-    A.<|> string "\\f"
+    A.<|> S.string "\\f"
       F.$> '\f'
-    A.<|> string "\\n"
+    A.<|> S.string "\\n"
       F.$> '\n'
-    A.<|> string "\\r"
+    A.<|> S.string "\\r"
       F.$> '\r'
-    A.<|> string "\\t"
+    A.<|> S.string "\\t"
       F.$> '\t'
     A.<|> unicodeChar
-    A.<|> matches (\c -> not (c == '\"' || c == '\\' || C.isControl c))
+    A.<|> S.matches
+      ( \c ->
+          not (c == '\"' || c == '\\' || C.isControl c)
+      )
   where
     unicodeChar =
-      C.chr . fromIntegral . digitsToNumber 16 0
-        <$> (string "\\u" *> M.replicateM 4 (matches C.isHexDigit))
+      C.chr . fromIntegral . L.digitsToNumber 16 0
+        <$> (S.string "\\u" *> M.replicateM 4 (S.matches C.isHexDigit))
 
-jFrac :: Parser String [Int]
-jFrac = char '.' *> A.some digit
+jFrac :: S.Parser String [Int]
+jFrac = S.char '.' *> A.some S.digit
 
-jExp :: Parser String Integer
+jExp :: S.Parser String Integer
 jExp =
-  (char 'e' A.<|> char 'E')
-    *> (signedInt <$> A.optional (char '+' A.<|> char '-') <*> jUInt)
+  (S.char 'e' A.<|> S.char 'E')
+    *> (L.signedInt <$> A.optional (S.char '+' A.<|> S.char '-') <*> jUInt)
 
-jInt :: Parser String JValue
+jInt :: S.Parser String JValue
 jInt =
   JNumber
-    <$> jInt'
+    <$> jIntNegative
     <*> pure []
     <*> pure 0
 
-jIntExp :: Parser String JValue
+jIntExp :: S.Parser String JValue
 jIntExp =
   JNumber
-    <$> jInt'
+    <$> jIntNegative
     <*> pure []
     <*> jExp
 
-jIntFrac :: Parser String JValue
+jIntFrac :: S.Parser String JValue
 jIntFrac =
   (\i f -> JNumber i f 0)
-    <$> jInt'
+    <$> jIntNegative
     <*> jFrac
 
-jIntFracExp :: Parser String JValue
+jIntFracExp :: S.Parser String JValue
 jIntFracExp =
   (\ ~(JNumber i f _) e -> JNumber i f e)
     <$> jIntFrac
     <*> jExp
 
-jNumber :: Parser String JValue
+jNumber :: S.Parser String JValue
 jNumber = jIntFracExp A.<|> jIntExp A.<|> jIntFrac A.<|> jInt
 
-surroundedBy :: Parser String a -> Parser String b -> Parser String a
-surroundedBy p q = q *> p <* q
-
-separatedBy :: Parser i a -> Parser i b -> Parser i [a]
-separatedBy p q = (:) <$> p <*> A.many (q *> p) A.<|> pure []
-
-spaces :: Parser String String
-spaces = A.many $ char ' ' A.<|> char '\n' A.<|> char '\t'
-
-jArray :: Parser String JValue
+jArray :: S.Parser String JValue
 jArray =
-  JArray <$> (char '[' *> (jValue `separatedBy` char ',' `surroundedBy` spaces) <* char ']')
+  JArray
+    <$> ( S.char '['
+            *> (jValue `L.separatedBy` S.char ',' `L.surroundedBy` L.spaces)
+            <* S.char ']'
+        )
 
-jObject :: Parser String JValue
+jObject :: S.Parser String JValue
 jObject =
   JObject
-    <$> (char '{' *> pair `separatedBy` char ',' `surroundedBy` spaces <* char '}')
+    <$> ( S.char '{'
+            *> pair
+              `L.separatedBy` S.char ','
+              `L.surroundedBy` L.spaces
+            <* S.char '}'
+        )
   where
     pair =
       (\ ~(JString s) j -> (s, j))
-        <$> (jString `surroundedBy` spaces)
-        <* char ':'
+        <$> (jString `L.surroundedBy` L.spaces)
+        <* S.char ':'
         <*> jValue
 
-jValue :: Parser String JValue
-jValue = jValue' `surroundedBy` spaces
+jValue :: S.Parser String JValue
+jValue = jValue' `L.surroundedBy` L.spaces
   where
     jValue' =
       jNull
@@ -239,6 +182,6 @@ jValue = jValue' `surroundedBy` spaces
         A.<|> jObject
 
 parseJSON :: String -> Maybe JValue
-parseJSON s = case parse jValue s of
+parseJSON s = case S.parse jValue s of
   Just ("", j) -> Just j
   _ -> Nothing
