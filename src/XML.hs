@@ -8,6 +8,7 @@ where
 
 import qualified Control.Applicative as A
 import qualified Data.Char as C
+import qualified Lib as L
 import qualified Shared as S
 
 data XValue
@@ -70,17 +71,17 @@ xTag :: S.Parser String XValue
 xTag = do
   _ <- S.char '<'
   n <- A.some (S.matches C.isAlphaNum)
-  a <-
-    A.many
-      ( do
-          _ <- S.char ' '
-          k <- A.some (S.matches C.isAlphaNum)
-          _ <- S.char '='
-          _ <- S.char '"'
-          v <- A.many (S.matches (/= '"'))
-          _ <- S.char '"'
-          pure (k, v)
-      )
+  a <- A.many $ do
+    _ <- L.spaces
+    k <- A.some (S.matches C.isAlphaNum)
+    _ <- L.spaces
+    _ <- S.char '='
+    _ <- L.spaces
+    _ <- S.char '"'
+    v <- A.many (S.matches (/= '"'))
+    _ <- S.char '"'
+    _ <- L.spaces
+    pure (k, v)
   _ <- S.char '>'
   c <- A.many (xTag A.<|> xText)
   _ <- S.string "</" *> S.string n <* S.char '>'
