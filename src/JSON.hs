@@ -23,7 +23,7 @@ data JValue
   deriving (Eq, Ord)
 
 jToString :: JValue -> String
-jToString (JString s) = s
+jToString (JString s) = "\"" ++ s ++ "\""
 jToString (JNumber s [] 0) = show s
 jToString (JNumber s f 0) = show s ++ "." ++ concatMap show f
 jToString (JNumber s [] e) = show s ++ "e" ++ show e
