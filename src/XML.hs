@@ -29,7 +29,7 @@ xToString (XTag n a []) =
     ++ n
     ++ " "
     ++ showAttributes a
-    ++ "/>"
+    ++ ">"
     ++ "</"
     ++ n
     ++ ">"
