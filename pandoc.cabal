@@ -28,6 +28,7 @@ library
       Core
       JSON
       Lib
+      Markdown
       Shared
       XML
   other-modules:

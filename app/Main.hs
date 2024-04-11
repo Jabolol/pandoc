@@ -7,9 +7,25 @@ main :: IO ()
 main = do
   args <- E.getArgs
   case args of
-    [path, "json"] -> handleConversion path C.parseJSON C.jToString "JSON"
-    [path, "xml"] -> handleConversion path C.parseXML C.xToString "XML"
-    _ -> putStrLn "Usage: ./pandoc /path/to/file type <json/xml>"
+    [path, "json"] ->
+      handleConversion
+        path
+        C.parseJSON
+        C.jToString
+        "JSON"
+    [path, "xml"] ->
+      handleConversion
+        path
+        C.parseXML
+        C.xToString
+        "XML"
+    [path, "md"] ->
+      handleConversion
+        path
+        C.parseMarkdown
+        C.mToString
+        "Markdown"
+    _ -> putStrLn "Usage: ./pandoc /path/to/file type"
 
 handleConversion :: FilePath -> (String -> Maybe a) -> (a -> String) -> String -> IO ()
 handleConversion path parseFn toStringFn formatName = do
