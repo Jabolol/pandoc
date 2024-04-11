@@ -1,4 +1,5 @@
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Document
   ( jsonToDocument,
@@ -40,9 +41,8 @@ instance Show Document where
     "Header: " ++ show header ++ "\nContent: " ++ show content
 
 -- JSON parsing
-
--- TODO: If a key is not found and
--- it is optional, return Nothing
+-- TODO: Refactor jsonToHeader so that author and date are optional
+-- TODO: Allow comments to enable `.jsonc` files
 
 jsonKeys :: J.JValue -> [String]
 jsonKeys (J.JObject object) = map fst object
@@ -89,6 +89,7 @@ jsonToContent (J.JString string) = return $ Text string
 jsonToContent (J.JNumber s [] 0) = return $ Text $ show s
 jsonToContent (J.JNumber s f 0) = return $ Text $ show s ++ "." ++ concatMap show f
 jsonToContent (J.JNumber s [] e) = return $ Text $ show s ++ "e" ++ show e
+jsonToContent (J.JNumber s f e) = return $ Text $ show s ++ "." ++ concatMap show f ++ "e" ++ show e
 jsonToContent object = Left ("Did not expect this: " ++ show object)
 
 jsonExecute :: String -> J.JValue -> Either String Content
@@ -100,7 +101,7 @@ jsonExecute "codeblock" = jsonToCodeBlock
 jsonExecute "list" = jsonToList
 jsonExecute "link" = jsonToLink
 jsonExecute "image" = jsonToImage
-jsonExecute cmd = const (Left ("Unknown command: " ++ cmd))
+jsonExecute cmd = const (Left ("Unknown tag: " ++ cmd))
 
 jsonObjectToContent :: J.JValue -> Either String Content
 jsonObjectToContent object =
@@ -163,7 +164,7 @@ jsonToImage object = do
   alt <- jsonFindKey "alt" image >>= jsonToArray
   firstAlt <- case alt of
     [a] -> jsonToString a
-    _ -> Left "Array with one element expected"
+    _ -> Left "Do not leave alt empty or have more than one alt"
   return $ Image url firstAlt
 
 jsonArrayToContent :: J.JValue -> Either String Content
@@ -181,9 +182,88 @@ jsonToObject (J.JObject object) = return $ J.JObject object
 jsonToObject _ = Left "Object expected"
 
 -- XML parsing
+-- TODO: Add support for comments <!-- whatever -->
+-- TODO: Fix author/date allowing nested tags instead of just text
 
 xmlToDocument :: X.XValue -> Either String Document
-xmlToDocument = undefined
+xmlToDocument tags =
+  xmlRoot tags >>= \(header, content) -> return $ Document (header, content)
+
+xmlRoot :: X.XValue -> Either String (Header, Content)
+xmlRoot (X.XTag "document" _ children) = do
+  header <- xmlFindTag "header" children >>= xmlToHeader
+  content <- xmlFindTag "body" children >>= xmlToContent
+
+  return (header, content)
+xmlRoot object = Left ("Document expected, got: " ++ show object)
+
+xmlFindTag :: String -> [X.XValue] -> Either String X.XValue
+xmlFindTag tag tags = do
+  let result =
+        filter
+          ( \case
+              X.XTag name _ _ -> name == tag
+              _ -> False
+          )
+          tags
+  case result of
+    [tag'] -> return tag'
+    _ -> Left ("Tag " ++ tag ++ " not found")
+
+xmlToHeader :: X.XValue -> Either String Header
+xmlToHeader (X.XTag "header" attrs children) = do
+  title' <- xmlFindAttribute "title" attrs
+  author' <- xmlFindTag "author" children >>= xmlToMaybeString
+  date' <- xmlFindTag "date" children >>= xmlToMaybeString
+
+  return $ Header title' author' date'
+xmlToHeader object = Left ("Header expected, got: " ++ show object)
+
+xmlToString :: X.XValue -> Either String String
+xmlToString (X.XText string) = return string
+xmlToString (X.XTag _ _ children) = do
+  content <- mapM xmlToString children
+  return $ concat content
+
+xmlToMaybeString :: X.XValue -> Either String (Maybe String)
+xmlToMaybeString (X.XText "") = return Nothing
+xmlToMaybeString object = Just <$> xmlToString object
+
+xmlToContent :: X.XValue -> Either String Content
+xmlToContent (X.XTag "body" _ children) = xmlToContent' children
+xmlToContent object = Left ("Did not expect this: " ++ show object)
+
+xmlToContent' :: [X.XValue] -> Either String Content
+xmlToContent' [X.XTag "section" _ children] = do
+  title' <- xmlFindTag "title" children >>= xmlToString
+  content <- xmlFindTag "content" children >>= xmlToContent
+  return $ Section (Just title') [content]
+xmlToContent' [X.XTag "bold" _ [X.XText content]] = return $ Bold content
+xmlToContent' [X.XTag "italic" _ [X.XText content]] = return $ Italic content
+xmlToContent' [X.XTag "code" _ [X.XText content]] = return $ Code content
+xmlToContent' [X.XTag "codeblock" _ children] = do
+  content <- mapM xmlToContent children
+  return $ CodeBlock content
+xmlToContent' [X.XTag "list" _ children] = do
+  content <- mapM xmlToContent children
+  return $ List content
+xmlToContent' [X.XTag "link" _ children] = do
+  url <- xmlFindTag "url" children >>= xmlToString
+  content <- xmlFindTag "content" children >>= xmlToContent
+  return $ Link url content
+xmlToContent' [X.XTag "image" _ children] = do
+  url <- xmlFindTag "url" children >>= xmlToString
+  alt <- xmlFindTag "alt" children >>= xmlToString
+  return $ Image url alt
+xmlToContent' children = do
+  content <- mapM xmlToContent children
+  return $ Paragraph content
+
+xmlFindAttribute :: String -> [(String, String)] -> Either String String
+xmlFindAttribute attr attrs =
+  case lookup attr attrs of
+    Just value -> return value
+    Nothing -> Left ("Attribute " ++ attr ++ " not found")
 
 -- Markdown parsing
 
