@@ -3,6 +3,7 @@
 module JSON
   ( parseJSON,
     jToString,
+    JValue (..),
   )
 where
 

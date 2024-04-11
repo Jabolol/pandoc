@@ -3,6 +3,7 @@
 module XML
   ( parseXML,
     xToString,
+    XValue (..),
   )
 where
 

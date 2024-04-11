@@ -3,9 +3,7 @@
 module Markdown
   ( parseMarkdown,
     mToString,
-    mMeta,
-    mHeader,
-    mText,
+    MValue (..),
   )
 where
 
