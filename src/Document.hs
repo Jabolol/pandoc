@@ -185,10 +185,6 @@ jsonToObject _ = Left "Object expected"
 -- TODO: Add support for comments <!-- whatever -->
 -- TODO: Fix author/date allowing nested tags instead of just text
 
-xmlToDocument :: X.XValue -> Either String Document
-xmlToDocument tags =
-  xmlRoot tags >>= \(header, content) -> return $ Document (header, content)
-
 xmlRoot :: X.XValue -> Either String (Header, Content)
 xmlRoot (X.XTag "document" _ children) = do
   header <- xmlFindTag "header" children >>= xmlToHeader
@@ -196,19 +192,6 @@ xmlRoot (X.XTag "document" _ children) = do
 
   return (header, content)
 xmlRoot object = Left ("Document expected, got: " ++ show object)
-
-xmlFindTag :: String -> [X.XValue] -> Either String X.XValue
-xmlFindTag tag tags = do
-  let result =
-        filter
-          ( \case
-              X.XTag name _ _ -> name == tag
-              _ -> False
-          )
-          tags
-  case result of
-    [tag'] -> return tag'
-    _ -> Left ("Tag " ++ tag ++ " not found")
 
 xmlToHeader :: X.XValue -> Either String Header
 xmlToHeader (X.XTag "header" attrs children) = do
@@ -229,41 +212,91 @@ xmlToMaybeString :: X.XValue -> Either String (Maybe String)
 xmlToMaybeString (X.XText "") = return Nothing
 xmlToMaybeString object = Just <$> xmlToString object
 
-xmlToContent :: X.XValue -> Either String Content
-xmlToContent (X.XTag "body" _ children) = xmlToContent' children
-xmlToContent object = Left ("Did not expect this: " ++ show object)
+xmlToDocument :: X.XValue -> Either String Document
+xmlToDocument tags =
+  xmlRoot tags >>= \(header, content) -> return $ Document (header, content)
 
-xmlToContent' :: [X.XValue] -> Either String Content
-xmlToContent' [X.XTag "section" _ children] = do
-  title' <- xmlFindTag "title" children >>= xmlToString
-  content <- xmlFindTag "content" children >>= xmlToContent
-  return $ Section (Just title') [content]
-xmlToContent' [X.XTag "bold" _ [X.XText content]] = return $ Bold content
-xmlToContent' [X.XTag "italic" _ [X.XText content]] = return $ Italic content
-xmlToContent' [X.XTag "code" _ [X.XText content]] = return $ Code content
-xmlToContent' [X.XTag "codeblock" _ children] = do
-  content <- mapM xmlToContent children
-  return $ CodeBlock content
-xmlToContent' [X.XTag "list" _ children] = do
-  content <- mapM xmlToContent children
-  return $ List content
-xmlToContent' [X.XTag "link" _ children] = do
-  url <- xmlFindTag "url" children >>= xmlToString
-  content <- xmlFindTag "content" children >>= xmlToContent
-  return $ Link url content
-xmlToContent' [X.XTag "image" _ children] = do
-  url <- xmlFindTag "url" children >>= xmlToString
-  alt <- xmlFindTag "alt" children >>= xmlToString
+xmlToContent :: X.XValue -> Either String Content
+xmlToContent (X.XTag "body" _ children) = xmlToBody children
+xmlToContent (X.XTag "section" attrs children) = xmlToSection children attrs
+xmlToContent (X.XTag "bold" _ children) = xmlToBold children
+xmlToContent (X.XTag "italic" _ children) = xmlToItalic children
+xmlToContent (X.XTag "code" _ children) = xmlToCode children
+xmlToContent (X.XTag "codeblock" _ children) = xmlToCodeBlock children
+xmlToContent (X.XTag "list" _ children) = xmlToList children
+xmlToContent (X.XTag "link" attrs children) = xmlToLink children attrs
+xmlToContent (X.XTag "image" attrs children) = xmlToImage children attrs
+xmlToContent (X.XTag "paragraph" _ children) = xmlToParagraph children
+xmlToContent (X.XText string) = return $ Text string
+xmlToContent (X.XTag name _ _) = Left ("Unknown tag: " ++ name)
+
+-- TODO: Implement xmlToBody
+xmlToBody :: [X.XValue] -> Either String Content
+xmlToBody children = undefined
+
+xmlToSection :: [X.XValue] -> [(String, String)] -> Either String Content
+xmlToSection children attrs = do
+  title' <- xmlFindAttribute "title" attrs
+  content' <- mapM xmlToContent children
+  return $ Section (Just title') content'
+
+xmlToBold :: [X.XValue] -> Either String Content
+xmlToBold [X.XText string] = Right $ Bold string
+xmlToBold _ = Left "Only text is allowed in bold"
+
+xmlToItalic :: [X.XValue] -> Either String Content
+xmlToItalic [X.XText string] = Right $ Italic string
+xmlToItalic _ = Left "Only text is allowed in italic"
+
+xmlToCode :: [X.XValue] -> Either String Content
+xmlToCode [X.XText string] = Right $ Code string
+xmlToCode _ = Left "Only text is allowed in code"
+
+xmlToCodeBlock :: [X.XValue] -> Either String Content
+xmlToCodeBlock children = do
+  content' <- mapM xmlToContent children
+  return $ CodeBlock content'
+
+xmlToList :: [X.XValue] -> Either String Content
+xmlToList children = do
+  content' <- mapM xmlToContent children
+  return $ List content'
+
+xmlToLink :: [X.XValue] -> [(String, String)] -> Either String Content
+xmlToLink [X.XText content] attrs = do
+  url <- xmlFindAttribute "url" attrs
+  return $ Link url (Text content)
+xmlToLink _ _ = Left "Link must have a url and content"
+
+xmlToImage :: [X.XValue] -> [(String, String)] -> Either String Content
+xmlToImage [X.XText alt] attrs = do
+  url <- xmlFindAttribute "url" attrs
   return $ Image url alt
-xmlToContent' children = do
-  content <- mapM xmlToContent children
-  return $ Paragraph content
+xmlToImage _ _ = Left "Image must have a url and alt"
+
+xmlToParagraph :: [X.XValue] -> Either String Content
+xmlToParagraph children = do
+  content' <- mapM xmlToContent children
+  return $ Paragraph content'
 
 xmlFindAttribute :: String -> [(String, String)] -> Either String String
 xmlFindAttribute attr attrs =
   case lookup attr attrs of
     Just value -> return value
     Nothing -> Left ("Attribute " ++ attr ++ " not found")
+
+xmlFindTag :: String -> [X.XValue] -> Either String X.XValue
+xmlFindTag tag tags = do
+  let result =
+        filter
+          ( \case
+              X.XTag name _ _ -> name == tag
+              _ -> False
+          )
+          tags
+  case result of
+    [tag'] -> return tag'
+    _ -> Left ("Tag " ++ tag ++ " not found")
 
 -- Markdown parsing
 
