@@ -230,9 +230,10 @@ xmlToContent (X.XTag "paragraph" _ children) = xmlToParagraph children
 xmlToContent (X.XText string) = return $ Text string
 xmlToContent (X.XTag name _ _) = Left ("Unknown tag: " ++ name)
 
--- TODO: Implement xmlToBody
 xmlToBody :: [X.XValue] -> Either String Content
-xmlToBody children = undefined
+xmlToBody children = do
+  content' <- mapM xmlToContent children
+  return $ Paragraph content'
 
 xmlToSection :: [X.XValue] -> [(String, String)] -> Either String Content
 xmlToSection children attrs = do
