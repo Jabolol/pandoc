@@ -95,18 +95,13 @@ showCode c = "`" ++ c ++ "`"
 
 mMeta :: S.Parser String MValue
 mMeta = do
-  _ <- S.string "---"
-  _ <- L.spaces
+  _ <- S.string "---" <* L.spaces
   m <- A.many $ do
     k <- A.some (S.matches C.isAlphaNum)
-    _ <- S.char ':'
-    _ <- L.spaces
-    v <- A.some (S.matches C.isPrint)
-    _ <- L.spaces
+    _ <- S.char ':' <* L.spaces
+    v <- A.some (S.matches C.isPrint) <* L.spaces
     pure (k, v)
-  _ <- L.spaces
-  _ <- S.string "---"
-  _ <- L.spaces
+  _ <- L.spaces *> S.string "---" <* L.spaces
   pure $ MMeta m
 
 mText :: S.Parser String MValue
@@ -116,34 +111,27 @@ mText = do
 
 mHeader :: S.Parser String MValue
 mHeader = do
-  l <- A.some (S.char '#')
-  _ <- L.spaces
-  t <- A.some (S.matches C.isPrint)
-  _ <- L.spaces
+  l <- A.some (S.char '#') <* L.spaces
+  t <- A.some (S.matches C.isPrint) <* L.spaces
   pure $ MHeader (length l) t
 
 mList :: S.Parser String MValue
 mList = do
   b <- S.char '*' A.<|> S.char '-'
-  _ <- L.spaces
-  l <- A.many mValue
+  l <- L.spaces *> A.many mValue
   pure $ MList (b == '*') l
 
 mCodeBlock :: S.Parser String MValue
 mCodeBlock = do
-  _ <- S.string "```"
-  _ <- L.spaces
-  l <- A.some (S.matches C.isAlphaNum)
-  _ <- L.spaces
-  c <- A.some (S.matches C.isPrint)
-  _ <- L.spaces
+  _ <- S.string "```" <* L.spaces
+  l <- A.some (S.matches C.isAlphaNum) <* L.spaces
+  c <- A.some (S.matches C.isPrint) <* L.spaces
   _ <- S.string "```"
   pure $ MCodeBlock l c
 
 mQuote :: S.Parser String MValue
 mQuote = do
-  _ <- S.char '>'
-  _ <- L.spaces
+  _ <- S.char '>' <* L.spaces
   q <- A.many mValue
   pure $ MQuote q
 
