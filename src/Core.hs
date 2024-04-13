@@ -8,6 +8,9 @@ module Core
     D.jsonToDocument,
     D.xmlToDocument,
     D.markdownToDocument,
+    D.documentToJson,
+    D.documentToXML,
+    D.documentToMarkdown,
   )
 where
 
