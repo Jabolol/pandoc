@@ -31,6 +31,7 @@ data Content
   | CodeBlock [Content]
   | List [Content]
   | Item [Content]
+  | Body [Content]
   deriving (Show)
 
 newtype Document = Document (Header, Content)
@@ -58,7 +59,7 @@ jsonFindKey _ _ = Left "Object expected"
 jsonRoot :: J.JValue -> Either String (Header, Content)
 jsonRoot object = do
   header <- jsonFindKey "header" object >>= jsonToHeader
-  content <- jsonFindKey "body" object >>= jsonToContent
+  content <- jsonFindKey "body" object >>= jsonToBody
 
   return (header, content)
 
@@ -112,6 +113,12 @@ jsonObjectToContent object =
     )
     (Left "No valid tag found")
     $ jsonKeys object
+
+jsonToBody :: J.JValue -> Either String Content
+jsonToBody object = do
+  array <- jsonToArray object
+  content <- mapM jsonToContent array
+  return $ Body content
 
 jsonToSection :: J.JValue -> Either String Content
 jsonToSection object = do
@@ -233,7 +240,7 @@ xmlToContent (X.XTag name _ _) = Left ("Unknown tag: " ++ name)
 xmlToBody :: [X.XValue] -> Either String Content
 xmlToBody children = do
   content' <- mapM xmlToContent children
-  return $ Paragraph content'
+  return $ Body content'
 
 xmlToSection :: [X.XValue] -> [(String, String)] -> Either String Content
 xmlToSection children attrs = do
