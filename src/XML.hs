@@ -73,23 +73,37 @@ xTag = do
   _ <- S.char '<'
   n <- A.some (S.matches C.isAlphaNum)
   a <- A.many $ do
-    _ <- L.spaces
-    k <- A.some (S.matches C.isAlphaNum)
-    _ <- L.spaces
-    _ <- S.char '='
-    _ <- L.spaces
-    _ <- S.char '"'
+    k <- L.spaces *> A.some (S.matches C.isAlphaNum)
+    _ <- L.spaces *> S.char '='
+    _ <- L.spaces *> S.char '"'
     v <- A.many (S.matches (/= '"'))
-    _ <- S.char '"'
-    _ <- L.spaces
+    _ <- S.char '"' <* L.spaces
     pure (k, v)
   _ <- S.char '>'
-  c <- A.many (xTag A.<|> xText)
-  _ <- S.string "</" *> S.string n <* S.char '>'
+  c <- L.spaces *> A.many (xTag A.<|> xText) <* L.spaces
+  _ <- S.string "</" *> S.string n <* S.char '>' <* L.spaces
   pure $ XTag n a c
 
 xText :: S.Parser String XValue
-xText = XText <$> A.some (S.matches (/= '<'))
+xText = A.some (S.matches (/= '<')) >>= \t -> pure $ XText $ trim t
+
+trim :: String -> String
+trim = removeLeadingTrailingSpaces . replaceConsecutiveSpaces . removeNewlines
+
+removeLeadingTrailingSpaces :: String -> String
+removeLeadingTrailingSpaces = dropWhile C.isSpace . reverse . dropWhile C.isSpace . reverse
+
+replaceConsecutiveSpaces :: String -> String
+replaceConsecutiveSpaces [] = []
+replaceConsecutiveSpaces (x : xs) = x : go x xs
+  where
+    go _ [] = []
+    go prevSpace (c : cs)
+      | C.isSpace prevSpace && C.isSpace c = go prevSpace cs
+      | otherwise = c : go c cs
+
+removeNewlines :: String -> String
+removeNewlines = filter (/= '\n')
 
 xValue :: S.Parser String XValue
 xValue = xTag A.<|> xText
