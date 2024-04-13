@@ -5,9 +5,13 @@ module Document
   ( jsonToDocument,
     xmlToDocument,
     markdownToDocument,
+    documentToJson,
+    documentToXML,
+    documentToMarkdown,
   )
 where
 
+import qualified Data.Maybe as Y
 import qualified JSON as J
 import qualified Markdown as M
 import qualified XML as X
@@ -124,9 +128,9 @@ jsonToSection :: J.JValue -> Either String Content
 jsonToSection object = do
   section' <- jsonFindKey "section" object
   title' <- jsonFindKey "title" section' >>= jsonToString
-  content <- jsonFindKey "content" section' >>= jsonToContent
-
-  return $ Section (Just title') [content]
+  array <- jsonFindKey "content" section' >>= jsonToArray
+  content <- mapM jsonToContent array
+  return $ Section (Just title') content
 
 jsonToBold :: J.JValue -> Either String Content
 jsonToBold object = do
@@ -146,16 +150,14 @@ jsonToCode object = do
 jsonToCodeBlock :: J.JValue -> Either String Content
 jsonToCodeBlock object = do
   array <- jsonFindKey "codeblock" object >>= jsonToArray
-  inner <- mapM jsonToArray array
-  content <- mapM (mapM jsonToContent) inner
-  return $ CodeBlock (concat content)
+  content <- mapM jsonToContent array
+  return $ CodeBlock content
 
 jsonToList :: J.JValue -> Either String Content
 jsonToList object = do
   array <- jsonFindKey "list" object >>= jsonToArray
-  inner <- mapM jsonToArray array
-  content <- mapM (mapM jsonToContent) inner
-  return $ List (concat content)
+  content <- mapM jsonToContent array
+  return $ List content
 
 jsonToLink :: J.JValue -> Either String Content
 jsonToLink object = do
@@ -310,3 +312,150 @@ xmlFindTag tag tags = do
 
 markdownToDocument :: M.MValue -> Either String Document
 markdownToDocument = undefined
+
+-- Document to JSON
+-- TODO: If author and date are empty, do not include them in the JSON
+
+documentToJson :: Document -> J.JValue
+documentToJson doc = J.JObject [("header", header), ("body", body)]
+  where
+    (header, body) = documentToJson' doc
+
+documentToJson' :: Document -> (J.JValue, J.JValue)
+documentToJson' (Document (header, content)) =
+  (headerToJson header, contentToJson content)
+
+headerToJson :: Header -> J.JValue
+headerToJson (Header title' author' date') =
+  J.JObject
+    [ ("title", J.JString title'),
+      ("author", authorToJson author'),
+      ("date", dateToJson date')
+    ]
+
+authorToJson :: Maybe String -> J.JValue
+authorToJson Nothing = J.JNull
+authorToJson (Just author') = J.JString author'
+
+dateToJson :: Maybe String -> J.JValue
+dateToJson Nothing = J.JNull
+dateToJson (Just date') = J.JString date'
+
+contentToJson :: Content -> J.JValue
+contentToJson (Text string) = J.JString string
+contentToJson (Italic string) =
+  J.JObject
+    [ ("italic", J.JString string)
+    ]
+contentToJson (Bold string) =
+  J.JObject
+    [ ("bold", J.JString string)
+    ]
+contentToJson (Code string) =
+  J.JObject
+    [ ("code", J.JString string)
+    ]
+contentToJson (Link url content) =
+  J.JObject
+    [ ( "link",
+        J.JObject
+          [ ("url", J.JString url),
+            ("content", contentToJson content)
+          ]
+      )
+    ]
+contentToJson (Image url alt) =
+  J.JObject
+    [ ( "image",
+        J.JObject
+          [ ("url", J.JString url),
+            ("alt", J.JString alt)
+          ]
+      )
+    ]
+contentToJson (Paragraph content) = J.JArray $ map contentToJson content
+contentToJson (Section title' content) =
+  J.JObject
+    [ ( "section",
+        J.JObject
+          [ ("title", J.JString $ Y.fromMaybe "" title'),
+            ("content", J.JArray $ map contentToJson content)
+          ]
+      )
+    ]
+contentToJson (CodeBlock content) =
+  J.JObject
+    [ ("codeblock", J.JArray $ map contentToJson content)
+    ]
+contentToJson (List content) =
+  J.JObject
+    [ ("list", J.JArray $ map contentToJson content)
+    ]
+contentToJson (Item content) =
+  J.JObject
+    [ ("item", J.JArray $ map contentToJson content)
+    ]
+contentToJson (Body content) =
+  J.JObject
+    [ ("body", J.JArray $ map contentToJson content)
+    ]
+
+-- Document to XML
+-- TODO: If author and date are empty, do not include them in the XML
+
+documentToXML :: Document -> X.XValue
+documentToXML doc = X.XTag "document" [] [header, body]
+  where
+    (header, body) = documentToXML' doc
+
+documentToXML' :: Document -> (X.XValue, X.XValue)
+documentToXML' (Document (header, content)) =
+  (headerToXML header, contentToXML content)
+
+headerToXML :: Header -> X.XValue
+headerToXML (Header title' author' date') =
+  X.XTag "header" [("title", title')] [authorToXML author', dateToXML date']
+
+authorToXML :: Maybe String -> X.XValue
+authorToXML Nothing = X.XTag "author" [] []
+authorToXML (Just author') = X.XTag "author" [] [X.XText author']
+
+dateToXML :: Maybe String -> X.XValue
+dateToXML Nothing = X.XTag "date" [] []
+dateToXML (Just date') = X.XTag "date" [] [X.XText date']
+
+contentToXML :: Content -> X.XValue
+contentToXML (Text string) = X.XText string
+contentToXML (Italic string) =
+  X.XTag "italic" [] [X.XText string]
+contentToXML (Bold string) =
+  X.XTag "bold" [] [X.XText string]
+contentToXML (Code string) =
+  X.XTag "code" [] [X.XText string]
+contentToXML (Link url content) =
+  X.XTag "link" [("url", url)] [contentToXML content]
+contentToXML (Image url alt) =
+  X.XTag "image" [("url", url)] [X.XText alt]
+contentToXML (Paragraph content) =
+  X.XTag "paragraph" [] $
+    map contentToXML content
+contentToXML (Section title' content) =
+  X.XTag "section" [("title", Y.fromMaybe "" title')] $
+    map contentToXML content
+contentToXML (CodeBlock content) =
+  X.XTag "codeblock" [] $
+    map contentToXML content
+contentToXML (List content) =
+  X.XTag "list" [] $
+    map contentToXML content
+contentToXML (Item content) =
+  X.XTag "item" [] $
+    map contentToXML content
+contentToXML (Body content) =
+  X.XTag "body" [] $
+    map contentToXML content
+
+-- Document to Markdown
+
+documentToMarkdown :: Document -> M.MValue
+documentToMarkdown = undefined
