@@ -458,4 +458,46 @@ contentToXML (Body content) =
 -- Document to Markdown
 
 documentToMarkdown :: Document -> M.MValue
-documentToMarkdown = undefined
+documentToMarkdown doc = M.MParagraph [header, body]
+  where
+    (header, body) = documentToMarkdown' doc
+
+documentToMarkdown' :: Document -> (M.MValue, M.MValue)
+documentToMarkdown' (Document (header, content)) =
+  (headerToMarkdown header, contentToMarkdown content)
+
+headerToMarkdown :: Header -> M.MValue
+headerToMarkdown (Header title' author' date') =
+  M.MMeta
+    [ ("title", title'),
+      ("author", Y.fromMaybe "" author'),
+      ("date", Y.fromMaybe "" date')
+    ]
+
+contentToMarkdown :: Content -> M.MValue
+contentToMarkdown (Text string) = M.MText string
+contentToMarkdown (Italic string) = M.MItalic [M.MText string]
+contentToMarkdown (Bold string) = M.MBold [M.MText string]
+contentToMarkdown (Code string) = M.MCode string
+contentToMarkdown (Link url _content) = M.MLink url "todo"
+contentToMarkdown (Image url alt) = M.MImage url alt
+contentToMarkdown (Paragraph content) =
+  M.MParagraph $
+    map contentToMarkdown content
+contentToMarkdown (Section title' content) =
+  M.MParagraph
+    [ M.MHeader 2 (Y.fromMaybe "" title'),
+      M.MParagraph $ map contentToMarkdown content
+    ]
+contentToMarkdown (CodeBlock content) = do
+  M.MParagraph $
+    map contentToMarkdown content
+contentToMarkdown (List content) =
+  M.MList False $
+    map contentToMarkdown content
+contentToMarkdown (Item content) =
+  M.MList False $
+    map contentToMarkdown content
+contentToMarkdown (Body content) =
+  M.MParagraph $
+    map contentToMarkdown content
