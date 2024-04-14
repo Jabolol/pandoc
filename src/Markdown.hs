@@ -30,7 +30,7 @@ data MValue
   deriving (Eq, Ord)
 
 mToString :: MValue -> String
-mToString (MMeta m) = "---\n" ++ showMeta m ++ "\n---"
+mToString (MMeta m) = "---\n" ++ showMeta m ++ "\n---\n"
 mToString (MText t) = t
 mToString (MParagraph p) = showParagraph p
 mToString (MHeader l t) = showHeader l t
@@ -60,6 +60,7 @@ showParagraph [x] = show x
 showParagraph (x : xs) = show x ++ " " ++ showParagraph xs
 
 showHeader :: Int -> String -> String
+showHeader _ [] = ""
 showHeader l t = replicate l '#' ++ " " ++ t
 
 showMList :: Bool -> [MValue] -> String
@@ -76,7 +77,7 @@ showQuote :: [MValue] -> String
 showQuote q = "> " ++ showParagraph q
 
 showLink :: String -> String -> String
-showLink t u = "[" ++ t ++ "](" ++ u ++ ")"
+showLink t u = "[" ++ u ++ "](" ++ t ++ ")"
 
 showImage :: String -> String -> String
 showImage t u = "!" ++ showLink t u
@@ -109,6 +110,7 @@ mText = do
   t <- A.some (S.matches C.isPrint)
   pure $ MText t
 
+-- TODO: Fix this not counting hashtags correctly
 mHeader :: S.Parser String MValue
 mHeader = do
   l <- A.some (S.char '#') <* L.spaces
