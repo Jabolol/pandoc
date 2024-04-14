@@ -85,25 +85,7 @@ xTag = do
   pure $ XTag n a c
 
 xText :: S.Parser String XValue
-xText = A.some (S.matches (/= '<')) >>= \t -> pure $ XText $ trim t
-
-trim :: String -> String
-trim = removeLeadingTrailingSpaces . replaceConsecutiveSpaces . removeNewlines
-
-removeLeadingTrailingSpaces :: String -> String
-removeLeadingTrailingSpaces = dropWhile C.isSpace . reverse . dropWhile C.isSpace . reverse
-
-replaceConsecutiveSpaces :: String -> String
-replaceConsecutiveSpaces [] = []
-replaceConsecutiveSpaces (x : xs) = x : go x xs
-  where
-    go _ [] = []
-    go prevSpace (c : cs)
-      | C.isSpace prevSpace && C.isSpace c = go prevSpace cs
-      | otherwise = c : go c cs
-
-removeNewlines :: String -> String
-removeNewlines = filter (/= '\n')
+xText = A.some (S.matches (/= '<')) >>= \t -> pure $ XText $ S.trim t
 
 xValue :: S.Parser String XValue
 xValue = xTag A.<|> xText
