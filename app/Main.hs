@@ -16,7 +16,7 @@ main = do
           case sth of
             Left err -> putStrLn err
             Right doc -> do
-              writeFile outputPath $ C.jToString $ C.documentToJson doc
+              writeFile outputPath $ C.mToString $ C.documentToMarkdown doc
               putStrLn $ "Conversion successful. Output written to " ++ outputPath
         _ -> error "Failed to parse XML"
     _ -> error "Usage: programName inputPath outputPath"
