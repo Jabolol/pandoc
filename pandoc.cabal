@@ -41,7 +41,6 @@ library
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
   build-depends:
       base >=4.7 && <5
-    , pretty-simple
   default-language: Haskell2010
 
 executable pandoc-exe
@@ -56,7 +55,6 @@ executable pandoc-exe
   build-depends:
       base >=4.7 && <5
     , pandoc
-    , pretty-simple
   default-language: Haskell2010
 
 test-suite pandoc-test
@@ -72,5 +70,4 @@ test-suite pandoc-test
   build-depends:
       base >=4.7 && <5
     , pandoc
-    , pretty-simple
   default-language: Haskell2010
