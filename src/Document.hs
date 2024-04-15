@@ -458,7 +458,7 @@ contentToXML (Body content) =
 -- Document to Markdown
 
 documentToMarkdown :: Document -> M.MValue
-documentToMarkdown doc = M.MParagraph [header, body]
+documentToMarkdown doc = M.MRoot (header, body)
   where
     (header, body) = documentToMarkdown' doc
 
@@ -476,21 +476,20 @@ headerToMarkdown (Header title' author' date') =
 
 contentToMarkdown :: Content -> M.MValue
 contentToMarkdown (Text string) = M.MText string
-contentToMarkdown (Italic string) = M.MItalic [M.MText string]
-contentToMarkdown (Bold string) = M.MBold [M.MText string]
+contentToMarkdown (Italic string) = M.MItalic string
+contentToMarkdown (Bold string) = M.MBold string
 contentToMarkdown (Code string) = M.MCode string
-contentToMarkdown (Link url _content) = M.MLink url "todo"
+contentToMarkdown (Link url (Text alt)) = M.MLink url alt
+contentToMarkdown (Link url _) = M.MLink url ""
 contentToMarkdown (Image url alt) = M.MImage url alt
 contentToMarkdown (Paragraph content) =
   M.MParagraph $
     map contentToMarkdown content
 contentToMarkdown (Section title' content) =
-  M.MParagraph
-    [ M.MHeader 2 (Y.fromMaybe "" title'),
-      M.MParagraph $ map contentToMarkdown content
-    ]
+  M.MSection (M.MHeader 1 $ Y.fromMaybe "" title') $
+    map contentToMarkdown content
 contentToMarkdown (CodeBlock content) = do
-  M.MParagraph $
+  M.MCodeBlock "" $
     map contentToMarkdown content
 contentToMarkdown (List content) =
   M.MList False $
@@ -499,5 +498,5 @@ contentToMarkdown (Item content) =
   M.MList False $
     map contentToMarkdown content
 contentToMarkdown (Body content) =
-  M.MParagraph $
+  M.MBody $
     map contentToMarkdown content
