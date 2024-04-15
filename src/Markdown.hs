@@ -18,15 +18,18 @@ data MValue
   | MParagraph [MValue]
   | MHeader Int String
   | MList Bool [MValue]
-  | MCodeBlock String String
+  | MCodeBlock String [MValue]
   | MQuote [MValue]
   | MLink String String
   | MImage String String
-  | MBold [MValue]
-  | MItalic [MValue]
-  | MStrikethrough [MValue]
+  | MBold String
+  | MItalic String
+  | MStrikethrough String
   | MCode String
   | MComment String
+  | MRoot (MValue, MValue)
+  | MBody [MValue]
+  | MSection MValue [MValue]
   deriving (Eq, Ord)
 
 mToString :: MValue -> String
@@ -44,6 +47,10 @@ mToString (MItalic i) = showItalic i
 mToString (MStrikethrough s) = showStrikethrough s
 mToString (MCode c) = showCode c
 mToString (MComment c) = "<!-- " ++ c ++ " -->"
+mToString (MRoot (a, b)) = mToString a ++ "\n" ++ mToString b
+mToString (MBody b) = showParagraph b
+mToString (MSection (MHeader l c) b) = showHeader l c ++ "\n" ++ showParagraph b
+mToString _ = "didnt expect that"
 
 instance Show MValue where
   show :: MValue -> String
@@ -56,40 +63,38 @@ showMeta ((k, v) : xs) = k ++ ": " ++ v ++ "\n" ++ showMeta xs
 
 showParagraph :: [MValue] -> String
 showParagraph [] = ""
-showParagraph [x] = show x
-showParagraph (x : xs) = show x ++ " " ++ showParagraph xs
+showParagraph [x] = mToString x
+showParagraph (x : xs) = mToString x ++ " " ++ showParagraph xs
 
 showHeader :: Int -> String -> String
-showHeader _ [] = ""
-showHeader l t = replicate l '#' ++ " " ++ t
+showHeader _ "" = ""
+showHeader _ t = "\n\n# " ++ t ++ "\n"
 
 showMList :: Bool -> [MValue] -> String
 showMList _ [] = ""
-showMList True [x] = "* " ++ show x
-showMList False [x] = "- " ++ show x
-showMList True (x : xs) = "* " ++ show x ++ "\n" ++ showMList True xs
-showMList False (x : xs) = "- " ++ show x ++ "\n" ++ showMList False xs
+showMList b [x] = (if b then "* " else "- ") ++ mToString x ++ "\n\n"
+showMList b (x : xs) = (if b then "* " else "- ") ++ mToString x ++ "\n" ++ showMList b xs
 
-showCodeBlock :: String -> String -> String
-showCodeBlock l c = "```" ++ l ++ "\n" ++ c ++ "\n```"
+showCodeBlock :: String -> [MValue] -> String
+showCodeBlock l c = "```" ++ l ++ "\n" ++ showParagraph c ++ "\n```\n\n"
 
 showQuote :: [MValue] -> String
 showQuote q = "> " ++ showParagraph q
 
 showLink :: String -> String -> String
-showLink t u = "[" ++ u ++ "](" ++ t ++ ")"
+showLink t l = "[" ++ l ++ "](" ++ t ++ ")"
 
 showImage :: String -> String -> String
-showImage t u = "!" ++ showLink t u
+showImage t l = "![" ++ l ++ "](" ++ t ++ ")"
 
-showBold :: [MValue] -> String
-showBold b = "**" ++ showParagraph b ++ "**"
+showBold :: String -> String
+showBold b = "**" ++ b ++ "**"
 
-showItalic :: [MValue] -> String
-showItalic i = "*" ++ showParagraph i ++ "*"
+showItalic :: String -> String
+showItalic i = "*" ++ i ++ "*"
 
-showStrikethrough :: [MValue] -> String
-showStrikethrough s = "~~" ++ showParagraph s ++ "~~"
+showStrikethrough :: String -> String
+showStrikethrough s = "~~" ++ s ++ "~~"
 
 showCode :: String -> String
 showCode c = "`" ++ c ++ "`"
@@ -127,7 +132,7 @@ mCodeBlock :: S.Parser String MValue
 mCodeBlock = do
   _ <- S.string "```" <* L.spaces
   l <- A.some (S.matches C.isAlphaNum) <* L.spaces
-  c <- A.some (S.matches C.isPrint) <* L.spaces
+  c <- A.many mValue <* L.spaces
   _ <- S.string "```"
   pure $ MCodeBlock l c
 
@@ -160,21 +165,21 @@ mImage = do
 mBold :: S.Parser String MValue
 mBold = do
   _ <- S.string "**"
-  b <- A.many mValue
+  b <- A.some (S.matches C.isPrint)
   _ <- S.string "**"
   pure $ MBold b
 
 mItalic :: S.Parser String MValue
 mItalic = do
   _ <- S.char '*'
-  i <- A.many mValue
+  i <- A.some (S.matches C.isPrint)
   _ <- S.char '*'
   pure $ MItalic i
 
 mStrikethrough :: S.Parser String MValue
 mStrikethrough = do
   _ <- S.string "~~"
-  s <- A.many mValue
+  s <- A.some (S.matches C.isPrint)
   _ <- S.string "~~"
   pure $ MStrikethrough s
 
