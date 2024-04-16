@@ -11,6 +11,7 @@ module Core
     D.documentToJson,
     D.documentToXML,
     D.documentToMarkdown,
+    D.Document (..),
   )
 where
 
