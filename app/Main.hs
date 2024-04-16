@@ -1,22 +1,28 @@
 module Main (main) where
 
-import qualified Core as C
+import qualified GHC.IO.Handle.FD as F
+import qualified Options as O
+import qualified Shared as S
 import qualified System.Environment as E
+import qualified System.Exit as X
+import qualified System.IO as I
+
+options :: O.Parser S.Options
+options =
+  S.Options
+    <$> O.strOption "i"
+    <*> O.enumOption "f" ["xml", "json"]
+    <*> O.maybeStrOption "o"
+    <*> O.maybeEnumOption "e" ["xml", "json", "markdown"]
+
+run :: S.Options -> IO ()
+run = undefined
 
 main :: IO ()
-main = do
-  args <- E.getArgs
-  case args of
-    [inputPath, outputPath] -> do
-      contents <- readFile inputPath
-      let parsed = C.parseXML contents
-      case parsed of
-        Just value -> do
-          let sth = C.xmlToDocument value
-          case sth of
-            Left err -> putStrLn err
-            Right doc -> do
-              writeFile outputPath $ C.mToString $ C.documentToMarkdown doc
-              putStrLn $ "Conversion successful. Output written to " ++ outputPath
-        _ -> error "Failed to parse XML"
-    _ -> error "Usage: programName inputPath outputPath"
+main =
+  E.getArgs >>= \args ->
+    case O.parse options args of
+      Left err ->
+        I.hPutStrLn F.stderr err
+          >> X.exitWith (X.ExitFailure 84)
+      Right opts -> run opts
