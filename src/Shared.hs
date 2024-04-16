@@ -4,17 +4,27 @@
 
 module Shared
   ( Parser,
+    Options (..),
     matches,
     char,
     digit,
     string,
     parse,
     trim,
+    trimNewlines,
   )
 where
 
 import qualified Control.Applicative as A
 import qualified Data.Char as C
+
+data Options = Options
+  { iFile :: String,
+    oFormat :: String,
+    oFile :: Maybe String,
+    iFormat :: Maybe String
+  }
+  deriving (Show)
 
 newtype Parser i o = Parser {parse :: i -> Maybe (i, o)}
 
@@ -79,3 +89,6 @@ replaceConsecutiveSpaces (x : xs) = x : go x xs
 
 removeNewlines :: String -> String
 removeNewlines = filter (/= '\n')
+
+trimNewlines :: String -> String
+trimNewlines = reverse . dropWhile (== '\n') . reverse
