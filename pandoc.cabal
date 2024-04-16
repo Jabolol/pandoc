@@ -30,6 +30,7 @@ library
       JSON
       Lib
       Markdown
+      Options
       Shared
       XML
   other-modules:
