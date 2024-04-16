@@ -48,13 +48,19 @@ mToString (MStrikethrough s) = showStrikethrough s
 mToString (MCode c) = showCode c
 mToString (MComment c) = "<!-- " ++ c ++ " -->"
 mToString (MRoot (a, b)) = mToString a ++ "\n" ++ mToString b
-mToString (MBody b) = showParagraph b
-mToString (MSection (MHeader l c) b) = showHeader l c ++ "\n" ++ showParagraph b
-mToString _ = "didnt expect that"
+mToString (MBody b) = accumulateString b
+mToString (MSection (MHeader l c) b) = showHeader l c ++ "\n" ++ accumulateString b
+mToString _ = "[ERR] Got something unexpected [ERR]"
 
 instance Show MValue where
   show :: MValue -> String
   show = mToString
+
+accumulateString :: [MValue] -> String
+accumulateString = foldr (\x acc -> mToString x ++ "\n" ++ S.trimNewlines acc) ""
+
+joinValues :: [MValue] -> String
+joinValues = foldr (\x acc -> mToString x ++ S.trimNewlines acc) ""
 
 showMeta :: [(String, String)] -> String
 showMeta [] = ""
@@ -62,30 +68,26 @@ showMeta [(k, v)] = k ++ ": " ++ v
 showMeta ((k, v) : xs) = k ++ ": " ++ v ++ "\n" ++ showMeta xs
 
 showParagraph :: [MValue] -> String
-showParagraph [] = ""
-showParagraph [x] = mToString x
-showParagraph (x : xs) = mToString x ++ " " ++ showParagraph xs
+showParagraph = foldr (\x acc -> mToString x ++ " " ++ acc) "\n"
 
 showHeader :: Int -> String -> String
 showHeader _ "" = ""
-showHeader _ t = "\n\n# " ++ t ++ "\n"
+showHeader l t = replicate l '#' ++ " " ++ t ++ "\n"
 
 showMList :: Bool -> [MValue] -> String
-showMList _ [] = ""
-showMList b [x] = (if b then "* " else "- ") ++ mToString x ++ "\n\n"
-showMList b (x : xs) = (if b then "* " else "- ") ++ mToString x ++ "\n" ++ showMList b xs
+showMList b = foldr (\x acc -> (if b then "* " else "- ") ++ mToString x ++ acc) ""
 
 showCodeBlock :: String -> [MValue] -> String
-showCodeBlock l c = "```" ++ l ++ "\n" ++ showParagraph c ++ "\n```\n\n"
+showCodeBlock l c = "```" ++ l ++ "\n" ++ joinValues c ++ "```\n"
 
 showQuote :: [MValue] -> String
-showQuote q = "> " ++ showParagraph q
+showQuote q = "> " ++ foldr (\x acc -> mToString x ++ " " ++ acc) "" q
 
 showLink :: String -> String -> String
-showLink t l = "[" ++ l ++ "](" ++ t ++ ")"
+showLink l a = "[" ++ a ++ "](" ++ l ++ ")"
 
 showImage :: String -> String -> String
-showImage t l = "![" ++ l ++ "](" ++ t ++ ")"
+showImage a l = "!" ++ showLink a l
 
 showBold :: String -> String
 showBold b = "**" ++ b ++ "**"
