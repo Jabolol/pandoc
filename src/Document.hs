@@ -2,7 +2,8 @@
 {-# LANGUAGE LambdaCase #-}
 
 module Document
-  ( jsonToDocument,
+  ( Document (..),
+    jsonToDocument,
     xmlToDocument,
     markdownToDocument,
     documentToJson,
