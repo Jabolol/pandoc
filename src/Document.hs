@@ -2,13 +2,8 @@
 {-# LANGUAGE LambdaCase #-}
 
 module Document
-  ( Document (..),
-    jsonToDocument,
-    xmlToDocument,
-    markdownToDocument,
-    documentToJson,
-    documentToXML,
-    documentToMarkdown,
+  ( fromDocument,
+    toDocument,
   )
 where
 
@@ -501,3 +496,20 @@ contentToMarkdown (Item content) =
 contentToMarkdown (Body content) =
   M.MBody $
     map contentToMarkdown content
+
+-- Document manipulation
+
+toDocument :: String -> String -> Either String Document
+toDocument "xml" x =
+  Y.fromMaybe (Left "Failed to parse input file.") $
+    X.parseXML x >>= (Just . xmlToDocument)
+toDocument "json" x =
+  Y.fromMaybe (Left "Failed to parse input file.") $
+    J.parseJSON x >>= (Just . jsonToDocument)
+toDocument fmt _ = Left $ "Unsupported format: " ++ fmt
+
+fromDocument :: String -> Document -> Either String String
+fromDocument "xml" doc = Right $ X.xToString $ documentToXML doc
+fromDocument "json" doc = Right $ J.jToString $ documentToJson doc
+fromDocument "markdown" doc = Right $ M.mToString $ documentToMarkdown doc
+fromDocument fmt _ = Left $ "Unsupported format: " ++ fmt
