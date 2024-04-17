@@ -5,7 +5,7 @@
 ## This is just a Makefile, but v5
 ##
 
-NAME = pandoc
+NAME = mypandoc
 LOCATION = $(shell stack path --local-install-root)
 TIX_LOCATION = $(shell stack path --local-hpc-root)
 

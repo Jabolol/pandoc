@@ -25,4 +25,4 @@ cabal.project.local~
 
 # extra files
 examples/
-pandoc
+mypandoc
