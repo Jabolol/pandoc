@@ -1,21 +1,15 @@
 module Core
-  ( J.parseJSON,
-    J.jToString,
-    X.xToString,
-    X.parseXML,
-    M.mToString,
-    M.parseMarkdown,
-    D.jsonToDocument,
-    D.xmlToDocument,
-    D.markdownToDocument,
-    D.documentToJson,
-    D.documentToXML,
-    D.documentToMarkdown,
-    D.Document (..),
+  ( flow,
+    try,
   )
 where
 
+import qualified Data.Either as E
+import qualified Data.List as L
 import qualified Document as D
-import qualified JSON as J
-import qualified Markdown as M
-import qualified XML as X
+
+flow :: String -> String -> String -> Either String String
+flow f c t = D.toDocument f c >>= D.fromDocument t
+
+try :: String -> Maybe String
+try c = L.find (\f -> E.isRight $ D.toDocument f c) ["xml", "json"]
