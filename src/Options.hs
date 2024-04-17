@@ -7,8 +7,7 @@ module Options
     intOption,
     strOption,
     enumOption,
-    maybeStrOption,
-    maybeEnumOption,
+    toMaybe,
   )
 where
 
@@ -48,52 +47,40 @@ parse p args = case runParser p args of
   Right (_, _ : _) -> Left "Unused arguments remain."
 
 intOption :: String -> Parser Int
-intOption name = Parser $ \case
-  [] -> Left "Empty argument list"
-  (x : xs)
-    | ("-" ++ name) == x -> case xs of
-        [] -> Left ("No value provided for option: " ++ name)
-        (v : rest) -> case T.readMaybe v of
-          Just parsed -> Right (parsed, rest)
-          Nothing -> Left ("Failed to parse int: " ++ v)
-    | otherwise -> Left ("Int option not found: " ++ name)
+intOption name = Parser $ \args -> do
+  let (value, rest) = extractOption name args
+  case value of
+    Just v -> case T.readMaybe v of
+      Just parsed -> Right (parsed, rest)
+      Nothing -> Left ("Failed to parse int: " ++ v)
+    Nothing -> Left ("No value provided for option: " ++ name)
 
 strOption :: String -> Parser String
-strOption name = Parser $ \case
-  [] -> Left "Empty argument list"
-  (x : xs)
-    | ("-" ++ name) == x -> case xs of
-        [] -> Left ("No value provided for option: " ++ name)
-        (v : rest) -> Right (v, rest)
-    | otherwise -> Left ("String option not found: " ++ x)
+strOption name = Parser $ \args -> do
+  let (value, rest) = extractOption name args
+  case value of
+    Just v -> Right (v, rest)
+    Nothing -> Left ("No value provided for option: " ++ name)
 
 enumOption :: String -> [String] -> Parser String
-enumOption name options = Parser $ \case
-  [] -> Left "Empty argument list"
-  (x : xs)
-    | ("-" ++ name) == x -> case xs of
-        [] -> Left ("No value provided for option: " ++ name)
-        (v : rest)
-          | v `elem` options -> Right (v, rest)
-          | otherwise -> Left ("Invalid value for option: " ++ name)
-    | otherwise -> Right (head options, x : xs)
+enumOption name options = Parser $ \args -> do
+  let (value, rest) = extractOption name args
+  case value of
+    Just v ->
+      if v `elem` options
+        then Right (v, rest)
+        else Left ("Invalid value for option: " ++ name)
+    Nothing -> Right (head options, rest)
 
-maybeStrOption :: String -> Parser (Maybe String)
-maybeStrOption name = Parser $ \case
+toMaybe :: Parser a -> Parser (Maybe a)
+toMaybe (Parser p) = Parser $ \case
   [] -> Right (Nothing, [])
-  (x : xs)
-    | ("-" ++ name) == x -> case xs of
-        [] -> Left ("No value provided for option: " ++ name)
-        (v : rest) -> Right (Just v, rest)
-    | otherwise -> Right (Nothing, x : xs)
+  xs -> case runParser (Just <$> Parser p) xs of
+    Left _ -> Right (Nothing, xs)
+    Right (Just a, rest) -> Right (Just a, rest)
+    _ -> Right (Nothing, xs)
 
-maybeEnumOption :: String -> [String] -> Parser (Maybe String)
-maybeEnumOption name options = Parser $ \case
-  [] -> Right (Nothing, [])
-  (x : xs)
-    | ("-" ++ name) == x -> case xs of
-        [] -> Left ("No value provided for option: " ++ name)
-        (v : rest)
-          | v `elem` options -> Right (Just v, rest)
-          | otherwise -> Left ("Invalid value for option: " ++ name)
-    | otherwise -> Right (Nothing, x : xs)
+extractOption :: String -> [String] -> (Maybe String, [String])
+extractOption name args = case break (== ("-" ++ name)) args of
+  (_, []) -> (Nothing, args)
+  (before, _ : after) -> (Just (head after), before ++ tail after)
