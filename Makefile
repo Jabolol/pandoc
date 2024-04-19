@@ -32,14 +32,6 @@ fclean: clean
 	@echo "$(ANSI_RED)>> Removing $(NAME)$(ANSI_RESET)"
 	@rm -rf $(NAME)
 
-tests_run:
-	@echo "$(ANSI_PURPLE)>> Running tests$(ANSI_RESET)"
-	@stack test --coverage
-	@echo "$(ANSI_GREEN)>> Creating coverage folder$(ANSI_RESET)"
-	@mkdir -p test/coverage
-	@echo "$(ANSI_YELLOW)>> Copying coverage files$(ANSI_RESET)"
-	@cp $(TIX_LOCATION)/$(NAME)/$(NAME)-test/$(NAME)-test.tix test/coverage
-
 re: fclean all
 
 .PHONY: all clean fclean re
