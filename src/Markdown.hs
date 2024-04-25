@@ -3,6 +3,7 @@
 module Markdown
   ( parseMarkdown,
     mToString,
+    updateHeaders,
     MValue (..),
   )
 where
@@ -35,7 +36,7 @@ data MValue
 mToString :: MValue -> String
 mToString (MMeta m) = "---\n" ++ showMeta m ++ "\n---\n"
 mToString (MText t) = t
-mToString (MParagraph p) = showParagraph p
+mToString (MParagraph p) = showParagraph p ++ "\n"
 mToString (MHeader l t) = showHeader l t
 mToString (MList b l) = showMList b l
 mToString (MCodeBlock l c) = showCodeBlock l c
@@ -49,8 +50,9 @@ mToString (MCode c) = showCode c
 mToString (MComment c) = "<!-- " ++ c ++ " -->"
 mToString (MRoot (a, b)) = mToString a ++ "\n" ++ mToString b
 mToString (MBody b) = accumulateString b
+mToString (MSection (MHeader _ "") b) = accumulateString b
 mToString (MSection (MHeader l c) b) = showHeader l c ++ "\n" ++ accumulateString b
-mToString _ = "[ERR] Got something unexpected [ERR]"
+mToString _ = ""
 
 instance Show MValue where
   show :: MValue -> String
@@ -60,7 +62,9 @@ accumulateString :: [MValue] -> String
 accumulateString = foldr (\x acc -> mToString x ++ "\n" ++ S.trimNewlines acc) ""
 
 joinValues :: [MValue] -> String
-joinValues = foldr (\x acc -> mToString x ++ S.trimNewlines acc) ""
+joinValues [] = ""
+joinValues [x] = mToString x
+joinValues (x : xs) = mToString x ++ joinValues xs
 
 showMeta :: [(String, String)] -> String
 showMeta [] = ""
@@ -68,14 +72,22 @@ showMeta [(k, v)] = k ++ ": " ++ v
 showMeta ((k, v) : xs) = k ++ ": " ++ v ++ "\n" ++ showMeta xs
 
 showParagraph :: [MValue] -> String
-showParagraph = foldr (\x acc -> mToString x ++ " " ++ acc) "\n"
+showParagraph [] = ""
+showParagraph [x] = mToString x
+showParagraph (x : xs) = mToString x ++ showParagraph xs
 
 showHeader :: Int -> String -> String
 showHeader _ "" = ""
 showHeader l t = replicate l '#' ++ " " ++ t ++ "\n"
 
 showMList :: Bool -> [MValue] -> String
-showMList b = foldr (\x acc -> (if b then "* " else "- ") ++ mToString x ++ acc) ""
+showMList b =
+  foldr
+    (\x acc -> prefix b ++ mToString x ++ acc)
+    ""
+  where
+    prefix True = "* "
+    prefix False = "- "
 
 showCodeBlock :: String -> [MValue] -> String
 showCodeBlock l c = "```" ++ l ++ "\n" ++ joinValues c ++ "```\n"
@@ -100,6 +112,28 @@ showStrikethrough s = "~~" ++ s ++ "~~"
 
 showCode :: String -> String
 showCode c = "`" ++ c ++ "`"
+
+updateHeaders :: MValue -> MValue
+updateHeaders = go 1
+  where
+    go :: Int -> MValue -> MValue
+    go lvl (MParagraph p) = MParagraph (map (go lvl) p)
+    go lvl (MHeader _ t) = MHeader lvl t
+    go lvl (MList b l) = MList b (map (go lvl) l)
+    go lvl (MCodeBlock lang c) = MCodeBlock lang (map (go lvl) c)
+    go lvl (MQuote q) = MQuote (map (go lvl) q)
+    go lvl (MRoot (a, b)) = MRoot (go lvl a, go lvl b)
+    go lvl (MBody b) = MBody (map (go lvl) b)
+    go lvl (MSection header body) =
+      let updatedHeader = case header of
+            MHeader _ _ -> MHeader lvl (headerTitle header)
+            _ -> header
+       in MSection updatedHeader (map (go (lvl + 1)) body)
+    go _ x = x
+
+    headerTitle :: MValue -> String
+    headerTitle (MHeader _ title) = title
+    headerTitle _ = ""
 
 mMeta :: S.Parser String MValue
 mMeta = do
