@@ -80,17 +80,17 @@ xTag = do
     _ <- S.char '"' <* L.spaces
     pure (k, v)
   _ <- S.char '>'
-  c <- L.spaces *> A.many (xTag A.<|> xText) <* L.spaces
-  _ <- S.string "</" *> S.string n <* S.char '>' <* L.spaces
+  c <- L.tabs *> A.many (xTag A.<|> xText) <* L.tabs
+  _ <- S.string "</" *> S.string n <* S.char '>' <* L.tabs
   pure $ XTag n a c
 
 xText :: S.Parser String XValue
-xText = A.some (S.matches (/= '<')) >>= \t -> pure $ XText $ S.trim t
+xText = XText <$> A.some (S.matches (/= '<'))
 
 xValue :: S.Parser String XValue
 xValue = xTag A.<|> xText
 
 parseXML :: String -> Maybe XValue
-parseXML s = case S.parse xValue s of
+parseXML s = case S.parse xValue $ S.toTab s of
   Just ("", x) -> Just x
   _ -> Nothing

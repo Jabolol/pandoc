@@ -6,6 +6,7 @@ module Lib
     digits,
     digitOneToNine,
     digitsToNumber,
+    tabs,
   )
 where
 
@@ -20,7 +21,10 @@ separatedBy :: S.Parser i a -> S.Parser i b -> S.Parser i [a]
 separatedBy p q = (:) <$> p <*> A.many (q *> p) A.<|> pure []
 
 spaces :: S.Parser String String
-spaces = A.many $ S.char ' ' A.<|> S.char '\n' A.<|> S.char '\t'
+spaces = A.many $ S.char ' ' A.<|> S.char '\n' -- A.<|> S.char '\t'
+
+tabs :: S.Parser String String
+tabs = A.many $ S.char '\t' A.<|> S.char '\n'
 
 digitsToNumber :: Integer -> Integer -> String -> Integer
 digitsToNumber _ acc [] = acc
