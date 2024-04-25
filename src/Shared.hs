@@ -12,6 +12,8 @@ module Shared
     parse,
     trim,
     trimNewlines,
+    escapeChar,
+    toTab,
   )
 where
 
@@ -73,10 +75,7 @@ string (x : xs) =
     <*> string xs
 
 trim :: String -> String
-trim = removeLeadingTrailingSpaces . replaceConsecutiveSpaces . removeNewlines
-
-removeLeadingTrailingSpaces :: String -> String
-removeLeadingTrailingSpaces = dropWhile C.isSpace . reverse . dropWhile C.isSpace . reverse
+trim = replaceConsecutiveSpaces . removeNewlines
 
 replaceConsecutiveSpaces :: String -> String
 replaceConsecutiveSpaces [] = []
@@ -92,3 +91,26 @@ removeNewlines = filter (/= '\n')
 
 trimNewlines :: String -> String
 trimNewlines = reverse . dropWhile (== '\n') . reverse
+
+escapeChar :: Char -> String
+escapeChar c
+  | c `elem` "\"\\" = ['\\', c]
+  | C.isControl c =
+      '\\' : case c of
+        '\b' -> ['b']
+        '\f' -> ['f']
+        '\n' -> ['n']
+        '\r' -> ['r']
+        '\t' -> ['t']
+        _ ->
+          let code = C.ord c
+           in [ 'u',
+                C.intToDigit (code `div` 16),
+                C.intToDigit (code `mod` 16)
+              ]
+  | otherwise = [c]
+
+toTab :: String -> String
+toTab [] = []
+toTab (' ' : ' ' : ' ' : ' ' : xs) = '\t' : toTab xs
+toTab (x : xs) = x : toTab xs

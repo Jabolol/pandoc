@@ -24,7 +24,7 @@ data JValue
   deriving (Eq, Ord)
 
 jToString :: JValue -> String
-jToString (JString s) = "\"" ++ s ++ "\""
+jToString (JString s) = "\"" ++ concatMap S.escapeChar s ++ "\""
 jToString (JNumber s [] 0) = show s
 jToString (JNumber s f 0) = show s ++ "." ++ concatMap show f
 jToString (JNumber s [] e) = show s ++ "e" ++ show e
@@ -63,10 +63,7 @@ jString = JString <$> (S.char '"' *> jString')
       optFirst <- A.optional jsonChar
       case optFirst of
         Nothing -> "" <$ S.char '"'
-        Just first -> do
-          rest <- A.many jsonChar
-          _ <- S.char '"'
-          pure (first : rest)
+        Just first -> (first :) <$> jString'
 
 jUInt :: S.Parser String Integer
 jUInt =
