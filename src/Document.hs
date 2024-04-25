@@ -392,9 +392,7 @@ contentToJson (Item content) =
     [ ("item", J.JArray $ map contentToJson content)
     ]
 contentToJson (Body content) =
-  J.JObject
-    [ ("body", J.JArray $ map contentToJson content)
-    ]
+  J.JArray $ map contentToJson content
 
 -- Document to XML
 -- TODO: If author and date are empty, do not include them in the XML
@@ -509,7 +507,17 @@ toDocument "json" x =
 toDocument fmt _ = Left $ "Unsupported format: " ++ fmt
 
 fromDocument :: String -> Document -> Either String String
-fromDocument "xml" doc = Right $ X.xToString $ documentToXML doc
-fromDocument "json" doc = Right $ J.jToString $ documentToJson doc
-fromDocument "markdown" doc = Right $ M.mToString $ documentToMarkdown doc
+fromDocument "xml" doc =
+  Right $
+    X.xToString $
+      documentToXML doc
+fromDocument "json" doc =
+  Right $
+    J.jToString $
+      documentToJson doc
+fromDocument "markdown" doc =
+  Right $
+    M.mToString $
+      M.updateHeaders $
+        documentToMarkdown doc
 fromDocument fmt _ = Left $ "Unsupported format: " ++ fmt
