@@ -1,5 +1,6 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TupleSections #-}
 
 module Document
   ( fromDocument,
@@ -42,8 +43,6 @@ instance Show Document where
     "Header: " ++ show header ++ "\nContent: " ++ show content
 
 -- JSON parsing
--- TODO: Refactor jsonToHeader so that author and date are optional
--- TODO: Allow comments to enable `.jsonc` files
 
 jsonKeys :: J.JValue -> [String]
 jsonKeys (J.JObject object) = map fst object
@@ -66,8 +65,8 @@ jsonRoot object = do
 jsonToHeader :: J.JValue -> Either String Header
 jsonToHeader object = do
   title' <- jsonFindKey "title" object >>= jsonToString
-  author' <- jsonFindKey "author" object >>= jsonToMaybeString
-  date' <- jsonFindKey "date" object >>= jsonToMaybeString
+  author' <- jsonToMaybeString $ jsonFindKey "author" object
+  date' <- jsonToMaybeString $ jsonFindKey "date" object
 
   return $ Header title' author' date'
 
@@ -75,9 +74,10 @@ jsonToString :: J.JValue -> Either String String
 jsonToString (J.JString string) = return string
 jsonToString object = Left ("String expected, got: " ++ show object)
 
-jsonToMaybeString :: J.JValue -> Either String (Maybe String)
-jsonToMaybeString J.JNull = return Nothing
-jsonToMaybeString object = Just <$> jsonToString object
+jsonToMaybeString :: Either String J.JValue -> Either String (Maybe String)
+jsonToMaybeString (Right (J.JString string)) = return $ Just string
+jsonToMaybeString (Right _) = Left "String expected"
+jsonToMaybeString (Left _) = return Nothing
 
 jsonToDocument :: J.JValue -> Either String Document
 jsonToDocument object =
@@ -187,8 +187,6 @@ jsonToObject (J.JObject object) = return $ J.JObject object
 jsonToObject _ = Left "Object expected"
 
 -- XML parsing
--- TODO: Add support for comments <!-- whatever -->
--- TODO: Fix author/date allowing nested tags instead of just text
 
 xmlRoot :: X.XValue -> Either String (Header, Content)
 xmlRoot (X.XTag "document" _ children) = do
@@ -201,8 +199,8 @@ xmlRoot object = Left ("Document expected, got: " ++ show object)
 xmlToHeader :: X.XValue -> Either String Header
 xmlToHeader (X.XTag "header" attrs children) = do
   title' <- xmlFindAttribute "title" attrs
-  author' <- xmlFindTag "author" children >>= xmlToMaybeString
-  date' <- xmlFindTag "date" children >>= xmlToMaybeString
+  author' <- xmlToMaybeString $ xmlFindTag "author" children
+  date' <- xmlToMaybeString $ xmlFindTag "date" children
 
   return $ Header title' author' date'
 xmlToHeader object = Left ("Header expected, got: " ++ show object)
@@ -213,9 +211,9 @@ xmlToString (X.XTag _ _ children) = do
   content <- mapM xmlToString children
   return $ concat content
 
-xmlToMaybeString :: X.XValue -> Either String (Maybe String)
-xmlToMaybeString (X.XText "") = return Nothing
-xmlToMaybeString object = Just <$> xmlToString object
+xmlToMaybeString :: Either String X.XValue -> Either String (Maybe String)
+xmlToMaybeString (Right object) = Just <$> xmlToString object
+xmlToMaybeString (Left _) = return Nothing
 
 xmlToDocument :: X.XValue -> Either String Document
 xmlToDocument tags =
@@ -310,7 +308,6 @@ markdownToDocument :: M.MValue -> Either String Document
 markdownToDocument = undefined
 
 -- Document to JSON
--- TODO: If author and date are empty, do not include them in the JSON
 
 documentToJson :: Document -> J.JValue
 documentToJson doc = J.JObject [("header", header), ("body", body)]
@@ -323,19 +320,12 @@ documentToJson' (Document (header, content)) =
 
 headerToJson :: Header -> J.JValue
 headerToJson (Header title' author' date') =
-  J.JObject
-    [ ("title", J.JString title'),
-      ("author", authorToJson author'),
-      ("date", dateToJson date')
-    ]
-
-authorToJson :: Maybe String -> J.JValue
-authorToJson Nothing = J.JNull
-authorToJson (Just author') = J.JString author'
-
-dateToJson :: Maybe String -> J.JValue
-dateToJson Nothing = J.JNull
-dateToJson (Just date') = J.JString date'
+  J.JObject $
+    ("title", J.JString title')
+      : Y.catMaybes
+        [ fmap (\a -> ("author", J.JString a)) author',
+          fmap (\d -> ("date", J.JString d)) date'
+        ]
 
 contentToJson :: Content -> J.JValue
 contentToJson (Text string) = J.JString string
@@ -395,7 +385,6 @@ contentToJson (Body content) =
   J.JArray $ map contentToJson content
 
 -- Document to XML
--- TODO: If author and date are empty, do not include them in the XML
 
 documentToXML :: Document -> X.XValue
 documentToXML doc = X.XTag "document" [] [header, body]
@@ -408,15 +397,11 @@ documentToXML' (Document (header, content)) =
 
 headerToXML :: Header -> X.XValue
 headerToXML (Header title' author' date') =
-  X.XTag "header" [("title", title')] [authorToXML author', dateToXML date']
-
-authorToXML :: Maybe String -> X.XValue
-authorToXML Nothing = X.XTag "author" [] []
-authorToXML (Just author') = X.XTag "author" [] [X.XText author']
-
-dateToXML :: Maybe String -> X.XValue
-dateToXML Nothing = X.XTag "date" [] []
-dateToXML (Just date') = X.XTag "date" [] [X.XText date']
+  X.XTag "header" [("title", title')] $
+    Y.catMaybes
+      [ fmap (\a -> X.XTag "author" [] [X.XText a]) author',
+        fmap (\d -> X.XTag "date" [] [X.XText d]) date'
+      ]
 
 contentToXML :: Content -> X.XValue
 contentToXML (Text string) = X.XText string
@@ -462,11 +447,12 @@ documentToMarkdown' (Document (header, content)) =
 
 headerToMarkdown :: Header -> M.MValue
 headerToMarkdown (Header title' author' date') =
-  M.MMeta
-    [ ("title", title'),
-      ("author", Y.fromMaybe "" author'),
-      ("date", Y.fromMaybe "" date')
-    ]
+  M.MMeta $
+    ("title", title')
+      : Y.catMaybes
+        [ fmap ("author",) author',
+          fmap ("date",) date'
+        ]
 
 contentToMarkdown :: Content -> M.MValue
 contentToMarkdown (Text string) = M.MText string
@@ -482,7 +468,7 @@ contentToMarkdown (Paragraph content) =
 contentToMarkdown (Section title' content) =
   M.MSection (M.MHeader 1 $ Y.fromMaybe "" title') $
     map contentToMarkdown content
-contentToMarkdown (CodeBlock content) = do
+contentToMarkdown (CodeBlock content) =
   M.MCodeBlock "" $
     map contentToMarkdown content
 contentToMarkdown (List content) =
@@ -500,10 +486,10 @@ contentToMarkdown (Body content) =
 toDocument :: String -> String -> Either String Document
 toDocument "xml" x =
   Y.fromMaybe (Left "Failed to parse input file.") $
-    X.parseXML x >>= (Just . xmlToDocument)
+    X.parseXML x >>= Just . xmlToDocument
 toDocument "json" x =
   Y.fromMaybe (Left "Failed to parse input file.") $
-    J.parseJSON x >>= (Just . jsonToDocument)
+    J.parseJSON x >>= Just . jsonToDocument
 toDocument fmt _ = Left $ "Unsupported format: " ++ fmt
 
 fromDocument :: String -> Document -> Either String String
