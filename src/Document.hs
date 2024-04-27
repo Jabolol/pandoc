@@ -455,7 +455,7 @@ headerToMarkdown (Header title' author' date') =
         ]
 
 contentToMarkdown :: Content -> M.MValue
-contentToMarkdown (Text string) = M.MText string
+contentToMarkdown (Text string) = M.MText False string
 contentToMarkdown (Italic string) = M.MItalic string
 contentToMarkdown (Bold string) = M.MBold string
 contentToMarkdown (Code string) = M.MCode string
@@ -469,13 +469,13 @@ contentToMarkdown (Section title' content) =
   M.MSection (M.MHeader 1 $ Y.fromMaybe "" title') $
     map contentToMarkdown content
 contentToMarkdown (CodeBlock content) =
-  M.MCodeBlock "" $
+  M.MCodeBlock $
     map contentToMarkdown content
 contentToMarkdown (List content) =
-  M.MList False $
+  M.MList $
     map contentToMarkdown content
 contentToMarkdown (Item content) =
-  M.MList False $
+  M.MList $
     map contentToMarkdown content
 contentToMarkdown (Body content) =
   M.MBody $
@@ -490,6 +490,9 @@ toDocument "xml" x =
 toDocument "json" x =
   Y.fromMaybe (Left "Failed to parse input file.") $
     J.parseJSON x >>= Just . jsonToDocument
+toDocument "markdown" x =
+  Y.fromMaybe (Left "Failed to parse input file.") $
+    M.parseMarkdown x >>= Just . markdownToDocument
 toDocument fmt _ = Left $ "Unsupported format: " ++ fmt
 
 fromDocument :: String -> Document -> Either String String

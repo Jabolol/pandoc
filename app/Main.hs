@@ -20,7 +20,7 @@ options =
     <$> O.strOption "i"
     <*> O.enumOption "f" ["xml", "json", "markdown"]
     <*> O.toMaybe (O.strOption "o")
-    <*> O.toMaybe (O.enumOption "e" ["xml", "json"])
+    <*> O.toMaybe (O.enumOption "e" ["xml", "json", "markdown"])
 
 handleError :: String -> IO ()
 handleError err =
