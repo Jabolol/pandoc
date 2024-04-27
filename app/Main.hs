@@ -1,7 +1,11 @@
+{-# LANGUAGE LambdaCase #-}
+
 module Main (main) where
 
 import qualified Control.Applicative as A
+import qualified Control.Exception as T
 import qualified Core as C
+import qualified Data.Functor as D
 import qualified Data.Maybe as Y
 import qualified GHC.IO.Handle.FD as F
 import qualified Options as O
@@ -18,27 +22,40 @@ options =
     <*> O.toMaybe (O.strOption "o")
     <*> O.toMaybe (O.enumOption "e" ["xml", "json"])
 
+handleError :: String -> IO ()
+handleError err =
+  I.hPutStrLn F.stderr err
+    >> X.exitWith (X.ExitFailure 84)
+
+handleSuccess :: Maybe String -> String -> IO ()
+handleSuccess = maybe putStrLn writeFile
+
+safeReadFile :: FilePath -> IO (Either String String)
+safeReadFile p =
+  T.try (readFile p) D.<&> \case
+    Left e -> Left $ show (e :: T.IOException)
+    Right x -> Right x
+
 run :: S.Options -> IO ()
 run opts = do
   let to = S.oFormat opts
-  content <- readFile $ S.iFile opts
-  let from = Y.fromMaybe "none" $ S.iFormat opts A.<|> C.try content
-  let result = C.flow from content to
+  file <- safeReadFile $ S.iFile opts
 
-  case result of
+  case file of
     Left err -> handleError err
-    Right x -> handleSuccess x
-  where
-    handleError err =
-      I.hPutStrLn F.stderr err
-        >> X.exitWith (X.ExitFailure 84)
-    handleSuccess = maybe putStrLn writeFile (S.oFile opts)
+    Right content -> do
+      let from =
+            Y.fromMaybe "none" $
+              S.iFormat opts A.<|> C.try content
+      let result = C.flow from content to
+
+      case result of
+        Left err -> handleError err
+        Right x -> handleSuccess (S.oFile opts) x
 
 main :: IO ()
 main =
   E.getArgs >>= \args ->
     case O.parse options args of
-      Left err ->
-        I.hPutStrLn F.stderr err
-          >> X.exitWith (X.ExitFailure 84)
+      Left err -> handleError err
       Right opts -> run opts
