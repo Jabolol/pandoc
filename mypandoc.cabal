@@ -28,7 +28,6 @@ library
       Core
       Document
       JSON
-      Lib
       Markdown
       Options
       Shared

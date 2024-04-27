@@ -14,6 +14,15 @@ module Shared
     trimNewlines,
     escapeChar,
     toTab,
+    surroundedBy,
+    separatedBy,
+    spaces,
+    signedInt,
+    digits,
+    digitOneToNine,
+    digitsToNumber,
+    tabs,
+    isSpecial,
   )
 where
 
@@ -114,3 +123,36 @@ toTab :: String -> String
 toTab [] = []
 toTab (' ' : ' ' : ' ' : ' ' : xs) = '\t' : toTab xs
 toTab (x : xs) = x : toTab xs
+
+surroundedBy :: Parser String a -> Parser String b -> Parser String a
+surroundedBy p q = q *> p <* q
+
+separatedBy :: Parser i a -> Parser i b -> Parser i [a]
+separatedBy p q = (:) <$> p <*> A.many (q *> p) A.<|> pure []
+
+spaces :: Parser String String
+spaces = A.many $ char ' ' A.<|> char '\n'
+
+tabs :: Parser String String
+tabs = A.many $ char '\t' A.<|> char '\n'
+
+digitsToNumber :: Integer -> Integer -> String -> Integer
+digitsToNumber _ acc [] = acc
+digitsToNumber base acc (d : ds) =
+  digitsToNumber
+    base
+    (acc * base + toInteger (C.digitToInt d))
+    ds
+
+digitOneToNine :: Parser String Char
+digitOneToNine = matches $ \c -> C.isDigit c && c /= '0'
+
+digits :: Parser String String
+digits = A.some $ matches C.isDigit
+
+signedInt :: Maybe Char -> Integer -> Integer
+signedInt (Just '-') = negate
+signedInt _ = id
+
+isSpecial :: Char -> Bool
+isSpecial c = c `elem` ['*', '`', '~', '!', '[', '_', '#']

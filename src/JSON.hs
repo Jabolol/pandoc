@@ -11,7 +11,6 @@ import qualified Control.Applicative as A
 import qualified Control.Monad as M
 import qualified Data.Char as C
 import qualified Data.Functor as F
-import qualified Lib as L
 import qualified Shared as S
 
 data JValue
@@ -67,15 +66,15 @@ jString = JString <$> (S.char '"' *> jString')
 
 jUInt :: S.Parser String Integer
 jUInt =
-  (\d ds -> L.digitsToNumber 10 0 (d : ds))
-    <$> L.digitOneToNine
-    <*> L.digits
+  (\d ds -> S.digitsToNumber 10 0 (d : ds))
+    <$> S.digitOneToNine
+    <*> S.digits
     A.<|> fromIntegral
       <$> S.digit
 
 jIntNegative :: S.Parser String Integer
 jIntNegative =
-  L.signedInt
+  S.signedInt
     <$> A.optional (S.char '-')
     <*> jUInt
 
@@ -104,7 +103,7 @@ jsonChar =
       )
   where
     unicodeChar =
-      C.chr . fromIntegral . L.digitsToNumber 16 0
+      C.chr . fromIntegral . S.digitsToNumber 16 0
         <$> (S.string "\\u" *> M.replicateM 4 (S.matches C.isHexDigit))
 
 jFrac :: S.Parser String [Int]
@@ -113,7 +112,7 @@ jFrac = S.char '.' *> A.some S.digit
 jExp :: S.Parser String Integer
 jExp =
   (S.char 'e' A.<|> S.char 'E')
-    *> (L.signedInt <$> A.optional (S.char '+' A.<|> S.char '-') <*> jUInt)
+    *> (S.signedInt <$> A.optional (S.char '+' A.<|> S.char '-') <*> jUInt)
 
 jInt :: S.Parser String JValue
 jInt =
@@ -148,7 +147,7 @@ jArray :: S.Parser String JValue
 jArray =
   JArray
     <$> ( S.char '['
-            *> (jValue `L.separatedBy` S.char ',' `L.surroundedBy` L.spaces)
+            *> (jValue `S.separatedBy` S.char ',' `S.surroundedBy` S.spaces)
             <* S.char ']'
         )
 
@@ -157,19 +156,19 @@ jObject =
   JObject
     <$> ( S.char '{'
             *> pair
-              `L.separatedBy` S.char ','
-              `L.surroundedBy` L.spaces
+              `S.separatedBy` S.char ','
+              `S.surroundedBy` S.spaces
             <* S.char '}'
         )
   where
     pair =
       (\ ~(JString s) j -> (s, j))
-        <$> (jString `L.surroundedBy` L.spaces)
+        <$> (jString `S.surroundedBy` S.spaces)
         <* S.char ':'
         <*> jValue
 
 jValue :: S.Parser String JValue
-jValue = jValue' `L.surroundedBy` L.spaces
+jValue = jValue' `S.surroundedBy` S.spaces
   where
     jValue' =
       jNull
