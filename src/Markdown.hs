@@ -10,16 +10,15 @@ where
 
 import qualified Control.Applicative as A
 import qualified Data.Char as C
-import qualified Lib as L
 import qualified Shared as S
 
 data MValue
   = MMeta [(String, String)]
-  | MText String
+  | MText Bool String
   | MParagraph [MValue]
   | MHeader Int String
-  | MList Bool [MValue]
-  | MCodeBlock String [MValue]
+  | MList [MValue]
+  | MCodeBlock [MValue]
   | MQuote [MValue]
   | MLink String String
   | MImage String String
@@ -35,11 +34,11 @@ data MValue
 
 mToString :: MValue -> String
 mToString (MMeta m) = "---\n" ++ showMeta m ++ "\n---\n"
-mToString (MText t) = t
+mToString (MText _ t) = t
 mToString (MParagraph p) = showParagraph p ++ "\n"
 mToString (MHeader l t) = showHeader l t
-mToString (MList b l) = showMList b l
-mToString (MCodeBlock l c) = showCodeBlock l c
+mToString (MList l) = showMList l
+mToString (MCodeBlock c) = showCodeBlock c
 mToString (MQuote q) = showQuote q
 mToString (MLink t u) = showLink t u
 mToString (MImage t u) = showImage t u
@@ -80,17 +79,14 @@ showHeader :: Int -> String -> String
 showHeader _ "" = ""
 showHeader l t = replicate l '#' ++ " " ++ t ++ "\n"
 
-showMList :: Bool -> [MValue] -> String
-showMList b =
+showMList :: [MValue] -> String
+showMList =
   foldr
-    (\x acc -> prefix b ++ mToString x ++ acc)
+    (\x acc -> "- " ++ mToString x ++ acc)
     ""
-  where
-    prefix True = "* "
-    prefix False = "- "
 
-showCodeBlock :: String -> [MValue] -> String
-showCodeBlock l c = "```" ++ l ++ "\n" ++ joinValues c ++ "```\n"
+showCodeBlock :: [MValue] -> String
+showCodeBlock c = "```\n" ++ joinValues c ++ "```\n"
 
 showQuote :: [MValue] -> String
 showQuote q = "> " ++ foldr (\x acc -> mToString x ++ " " ++ acc) "" q
@@ -119,8 +115,8 @@ updateHeaders = go 1
     go :: Int -> MValue -> MValue
     go lvl (MParagraph p) = MParagraph (map (go lvl) p)
     go lvl (MHeader _ t) = MHeader lvl t
-    go lvl (MList b l) = MList b (map (go lvl) l)
-    go lvl (MCodeBlock lang c) = MCodeBlock lang (map (go lvl) c)
+    go lvl (MList l) = MList (map (go lvl) l)
+    go lvl (MCodeBlock c) = MCodeBlock (map (go lvl) c)
     go lvl (MQuote q) = MQuote (map (go lvl) q)
     go lvl (MRoot (a, b)) = MRoot (go lvl a, go lvl b)
     go lvl (MBody b) = MBody (map (go lvl) b)
@@ -137,107 +133,127 @@ updateHeaders = go 1
 
 mMeta :: S.Parser String MValue
 mMeta = do
-  _ <- S.string "---" <* L.spaces
+  _ <- S.string "---" <* S.spaces
   m <- A.many $ do
     k <- A.some (S.matches C.isAlphaNum)
-    _ <- S.char ':' <* L.spaces
-    v <- A.some (S.matches C.isPrint) <* L.spaces
+    _ <- S.char ':' <* S.spaces
+    v <- A.some (S.matches C.isPrint) <* S.spaces
     pure (k, v)
-  _ <- L.spaces *> S.string "---" <* L.spaces
+  _ <- S.spaces *> S.string "---" <* S.spaces
   pure $ MMeta m
 
 mText :: S.Parser String MValue
 mText = do
-  t <- A.some (S.matches C.isPrint)
-  pure $ MText t
+  t <- A.some (S.matches $ \c -> C.isPrint c && not (S.isSpecial c))
+  z <- S.spaces
+  pure $ MText (not $ null z) t
 
--- TODO: Fix this not counting hashtags correctly
+mParagraph :: S.Parser String MValue
+mParagraph = do
+  p <- A.some (mText A.<|> mInner)
+  pure $ MParagraph p
+
 mHeader :: S.Parser String MValue
 mHeader = do
-  l <- A.some (S.char '#') <* L.spaces
-  t <- A.some (S.matches C.isPrint) <* L.spaces
+  l <- A.some (S.char '#') <* S.spaces
+  t <- A.some (S.matches C.isPrint) <* S.spaces
   pure $ MHeader (length l) t
 
 mList :: S.Parser String MValue
 mList = do
-  b <- S.char '*' A.<|> S.char '-'
-  l <- L.spaces *> A.many mValue
-  pure $ MList (b == '*') l
+  l <- S.spaces *> A.some mItem
+  pure $ MList l
 
 mCodeBlock :: S.Parser String MValue
 mCodeBlock = do
-  _ <- S.string "```" <* L.spaces
-  l <- A.some (S.matches C.isAlphaNum) <* L.spaces
-  c <- A.many mValue <* L.spaces
+  _ <- S.string "```" <* S.spaces
+  c <- A.some mText
   _ <- S.string "```"
-  pure $ MCodeBlock l c
+  pure $ MCodeBlock c
 
 mQuote :: S.Parser String MValue
 mQuote = do
-  _ <- S.char '>' <* L.spaces
-  q <- A.many mValue
+  _ <- S.char '>' <* S.spaces
+  q <- A.many (mValue <* S.spaces)
   pure $ MQuote q
 
 mLink :: S.Parser String MValue
 mLink = do
   _ <- S.char '['
-  t <- A.some (S.matches C.isPrint)
+  t <- A.some (S.matches $ \c -> C.isPrint c && c /= ']')
   _ <- S.char ']'
   _ <- S.char '('
-  u <- A.some (S.matches C.isPrint)
+  u <- A.some (S.matches $ \c -> C.isPrint c && c /= ')')
   _ <- S.char ')'
   pure $ MLink t u
 
 mImage :: S.Parser String MValue
 mImage = do
   _ <- S.string "!["
-  t <- A.some (S.matches C.isPrint)
+  t <- A.some (S.matches $ \c -> C.isPrint c && c /= ']')
   _ <- S.char ']'
   _ <- S.char '('
-  u <- A.some (S.matches C.isPrint)
+  u <- A.some (S.matches $ \c -> C.isPrint c && c /= ')')
   _ <- S.char ')'
   pure $ MImage t u
 
 mBold :: S.Parser String MValue
 mBold = do
   _ <- S.string "**"
-  b <- A.some (S.matches C.isPrint)
+  b <- A.some (S.matches $ \c -> C.isPrint c && c /= '*')
   _ <- S.string "**"
   pure $ MBold b
 
 mItalic :: S.Parser String MValue
 mItalic = do
+  _ <- S.char '_'
+  i <- A.some (S.matches $ \c -> C.isPrint c && c /= '_')
+  _ <- S.char '_'
+  pure $ MItalic i
+
+mItalic' :: S.Parser String MValue
+mItalic' = do
   _ <- S.char '*'
-  i <- A.some (S.matches C.isPrint)
+  i <- A.some (S.matches $ \c -> C.isPrint c && c /= '*')
   _ <- S.char '*'
   pure $ MItalic i
 
 mStrikethrough :: S.Parser String MValue
 mStrikethrough = do
   _ <- S.string "~~"
-  s <- A.some (S.matches C.isPrint)
+  s <- A.some (S.matches $ \c -> C.isPrint c && c /= '~')
   _ <- S.string "~~"
   pure $ MStrikethrough s
 
 mCode :: S.Parser String MValue
 mCode = do
   _ <- S.char '`'
-  c <- A.some (S.matches C.isPrint)
+  c <- A.some (S.matches $ \c -> C.isPrint c && c /= '`')
   _ <- S.char '`'
   pure $ MCode c
 
 mComment :: S.Parser String MValue
 mComment = do
   _ <- S.string "<!--"
-  c <- A.some (S.matches C.isPrint)
+  c <- A.some (S.matches $ \c -> C.isPrint c && c /= '-')
   _ <- S.string "-->"
   pure $ MComment c
 
-mValue :: S.Parser String MValue
-mValue =
-  mMeta
-    A.<|> mHeader
-    A.<|> mComment
+mItem :: S.Parser String MValue
+mItem = do
+  _ <- S.char '-'
+  t <- S.spaces *> A.some (S.matches C.isPrint) <* S.spaces
+  pure $ MText False t
+
+mSection :: S.Parser String MValue
+mSection = do
+  h <- mHeader
+  p <- A.some (mInner A.<|> mParagraph)
+  pure $ MSection h p
+
+mInner :: S.Parser String MValue
+mInner =
+  mComment
     A.<|> mList
     A.<|> mCodeBlock
     A.<|> mQuote
@@ -245,11 +261,24 @@ mValue =
     A.<|> mImage
     A.<|> mBold
     A.<|> mItalic
+    A.<|> mItalic'
     A.<|> mStrikethrough
     A.<|> mCode
-    A.<|> mText
+
+mValue :: S.Parser String MValue
+mValue =
+  mMeta
+    A.<|> mSection
+    A.<|> mParagraph
 
 parseMarkdown :: String -> Maybe MValue
-parseMarkdown s = case S.parse mValue s of
-  Just ("", m) -> Just m
+parseMarkdown s = case loop s [] of
+  Just m -> Just $ MBody $ reverse m
   _ -> Nothing
+
+loop :: String -> [MValue] -> Maybe [MValue]
+loop "" acc = Just acc
+loop input acc =
+  case S.parse mValue input of
+    Just (rest, m) -> loop rest (m : acc)
+    _ -> Nothing
