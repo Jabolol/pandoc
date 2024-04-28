@@ -115,10 +115,6 @@ instance Monad (Parser i) where
 
 ## result
 
-All of these typeclasses allow for the composition of parsers. This is done by
-chaining parsers together to form a larger parser. This allows for the
-construction of complex parsers from simple parsers.
-
 Take for example the [`xml` parser](./src/XML.hs):
 
 ```hs
