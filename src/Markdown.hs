@@ -30,6 +30,7 @@ data MValue
   | MRoot (MValue, MValue)
   | MBody [MValue]
   | MSection MValue [MValue]
+  | MWrapper [MValue]
   deriving (Eq, Ord)
 
 mToString :: MValue -> String
@@ -110,22 +111,22 @@ showCode :: String -> String
 showCode c = "`" ++ c ++ "`"
 
 updateHeaders :: MValue -> MValue
-updateHeaders = go 1
+updateHeaders = adjust 1
   where
-    go :: Int -> MValue -> MValue
-    go lvl (MParagraph p) = MParagraph (map (go lvl) p)
-    go lvl (MHeader _ t) = MHeader lvl t
-    go lvl (MList l) = MList (map (go lvl) l)
-    go lvl (MCodeBlock c) = MCodeBlock (map (go lvl) c)
-    go lvl (MQuote q) = MQuote (map (go lvl) q)
-    go lvl (MRoot (a, b)) = MRoot (go lvl a, go lvl b)
-    go lvl (MBody b) = MBody (map (go lvl) b)
-    go lvl (MSection header body) =
+    adjust :: Int -> MValue -> MValue
+    adjust lvl (MParagraph p) = MParagraph (map (adjust lvl) p)
+    adjust lvl (MHeader _ t) = MHeader lvl t
+    adjust lvl (MList l) = MList (map (adjust lvl) l)
+    adjust lvl (MCodeBlock c) = MCodeBlock (map (adjust lvl) c)
+    adjust lvl (MQuote q) = MQuote (map (adjust lvl) q)
+    adjust lvl (MRoot (a, b)) = MRoot (adjust lvl a, adjust lvl b)
+    adjust lvl (MBody b) = MBody (map (adjust lvl) b)
+    adjust lvl (MSection header body) =
       let updatedHeader = case header of
             MHeader _ _ -> MHeader lvl (headerTitle header)
             _ -> header
-       in MSection updatedHeader (map (go (lvl + 1)) body)
-    go _ x = x
+       in MSection updatedHeader (map (adjust (lvl + 1)) body)
+    adjust _ x = x
 
     headerTitle :: MValue -> String
     headerTitle (MHeader _ title) = title
@@ -248,7 +249,7 @@ mItem = do
 mSection :: S.Parser String MValue
 mSection = do
   h <- mHeader
-  p <- A.some (mInner A.<|> mParagraph)
+  p <- A.some (mSection A.<|> mInner A.<|> mParagraph)
   pure $ MSection h p
 
 mInner :: S.Parser String MValue
@@ -271,9 +272,33 @@ mValue =
     A.<|> mSection
     A.<|> mParagraph
 
+arrange :: [MValue] -> [MValue]
+arrange = map MParagraph . group [] []
+  where
+    group :: [MValue] -> [[MValue]] -> [MValue] -> [[MValue]]
+    group acc out [] = reverse (reverse acc : out)
+    group acc out (x : xs) = case (acc, x) of
+      ([], MText True t) -> group [MText True t] out xs
+      ([], _) -> group [x] out xs
+      (a@(MText True _ : _), MText True t) -> reverse a : group [MText True t] out xs
+      (a@(MText True _ : _), _) -> reverse a : group [x] out xs
+      (a, _) -> group (x : a) out xs
+
+nest :: MValue -> MValue
+nest (MParagraph p) = MWrapper $ arrange p
+nest e = e
+
+process :: [MValue] -> [MValue]
+process [] = []
+process (MWrapper w : xs) = w ++ process xs
+process (MCodeBlock c : xs) = MCodeBlock c : process xs
+process (MParagraph p : xs) = arrange p ++ process xs
+process (MSection h p : xs) = MSection h (process $ map nest p) : process xs
+process (x : xs) = x : process xs
+
 parseMarkdown :: String -> Maybe MValue
 parseMarkdown s = case loop s [] of
-  Just m -> Just $ MBody $ reverse m
+  Just m -> Just $ MBody $ process $ reverse m
   _ -> Nothing
 
 loop :: String -> [MValue] -> Maybe [MValue]
