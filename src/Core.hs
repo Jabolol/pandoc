@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 module Core
   ( flow,
     try,
@@ -12,4 +14,4 @@ flow :: String -> String -> String -> Either String String
 flow f c t = D.toDocument f c >>= D.fromDocument t
 
 try :: String -> Maybe String
-try c = L.find (\f -> E.isRight $ D.toDocument f c) ["xml", "json"]
+try c = L.find (\case f -> E.isRight $ D.toDocument f c) ["xml", "json", "markdown"]
