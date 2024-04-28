@@ -159,14 +159,20 @@ jsonToLink :: J.JValue -> Either String Content
 jsonToLink object = do
   link <- jsonFindKey "link" object >>= jsonToObject
   url <- jsonFindKey "url" link >>= jsonToString
-  content <- jsonFindKey "content" link >>= jsonToContent
+  raw <- jsonFindKey "content" link >>= jsonToContent
+  content <- case raw of
+    Paragraph [Text c] -> Right $ Text c
+    _ -> Left "Content must be text"
   return $ Link url content
 
 jsonToImage :: J.JValue -> Either String Content
 jsonToImage object = do
   image <- jsonFindKey "image" object >>= jsonToObject
   url <- jsonFindKey "url" image >>= jsonToString
-  alt <- jsonFindKey "alt" image >>= jsonToContent
+  raw <- jsonFindKey "alt" image >>= jsonToContent
+  alt <- case raw of
+    Paragraph [Text c] -> Right $ Text c
+    _ -> Left "Alt must be text"
   return $ Image url alt
 
 jsonArrayToContent :: J.JValue -> Either String Content
