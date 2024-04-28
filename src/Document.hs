@@ -26,7 +26,7 @@ data Content
   | Bold String
   | Code String
   | Link String Content
-  | Image String String
+  | Image String Content
   | Paragraph [Content]
   | Section (Maybe String) [Content]
   | CodeBlock [Content]
@@ -166,11 +166,8 @@ jsonToImage :: J.JValue -> Either String Content
 jsonToImage object = do
   image <- jsonFindKey "image" object >>= jsonToObject
   url <- jsonFindKey "url" image >>= jsonToString
-  alt <- jsonFindKey "alt" image >>= jsonToArray
-  firstAlt <- case alt of
-    [a] -> jsonToString a
-    _ -> Left "Do not leave alt empty or have more than one alt"
-  return $ Image url firstAlt
+  alt <- jsonFindKey "alt" image >>= jsonToContent
+  return $ Image url alt
 
 jsonArrayToContent :: J.JValue -> Either String Content
 jsonArrayToContent (J.JArray array) = do
@@ -273,10 +270,12 @@ xmlToLink [X.XText content] attrs = do
 xmlToLink _ _ = Left "Link must have a url and content"
 
 xmlToImage :: [X.XValue] -> [(String, String)] -> Either String Content
-xmlToImage [X.XText alt] attrs = do
+xmlToImage alt attrs = do
   url <- xmlFindAttribute "url" attrs
-  return $ Image url alt
-xmlToImage _ _ = Left "Image must have a url and alt"
+  first <- case alt of
+    [X.XText string] -> return $ Text string
+    _ -> Left "Image alt must be text"
+  return $ Image url first
 
 xmlToParagraph :: [X.XValue] -> Either String Content
 xmlToParagraph children = do
@@ -305,7 +304,53 @@ xmlFindTag tag tags = do
 -- Markdown parsing
 
 markdownToDocument :: M.MValue -> Either String Document
-markdownToDocument = undefined
+markdownToDocument (M.MBody ((M.MMeta h) : b)) = do
+  header <- markdownToHeader h
+  content <- markdownToContent (M.MBody b)
+  return $ Document (header, content)
+markdownToDocument _ = Left "Document expected"
+
+markdownToHeader :: [(String, String)] -> Either String Header
+markdownToHeader attrs = do
+  title' <- markdownFindKey "title" attrs
+  author' <- markdownToMaybeString $ markdownFindKey "author" attrs
+  date' <- markdownToMaybeString $ markdownFindKey "date" attrs
+
+  return $ Header title' author' date'
+
+markdownFindKey :: String -> [(String, String)] -> Either String String
+markdownFindKey key attrs =
+  case lookup key attrs of
+    Just value -> return value
+    Nothing -> Left ("Key " ++ key ++ " not found")
+
+markdownToMaybeString :: Either String String -> Either String (Maybe String)
+markdownToMaybeString (Right string) = return $ Just string
+markdownToMaybeString (Left _) = return Nothing
+
+markdownToContent :: M.MValue -> Either String Content
+markdownToContent (M.MBody content) = do
+  content' <- mapM markdownToContent content
+  return $ Body content'
+markdownToContent (M.MSection (M.MHeader _ title') body) = do
+  content' <- mapM markdownToContent body
+  return $ Section (Just title') content'
+markdownToContent (M.MParagraph content) = do
+  content' <- mapM markdownToContent content
+  return $ Paragraph content'
+markdownToContent (M.MBold string) = return $ Bold string
+markdownToContent (M.MItalic string) = return $ Italic string
+markdownToContent (M.MCode string) = return $ Code string
+markdownToContent (M.MLink alt url) = return $ Link url $ Text alt
+markdownToContent (M.MImage alt url) = return $ Image url $ Text alt
+markdownToContent (M.MList content) = do
+  content' <- mapM (\x -> markdownToContent (M.MParagraph [x])) content
+  return $ List content'
+markdownToContent (M.MCodeBlock content) = do
+  content' <- mapM (\x -> markdownToContent (M.MParagraph [x])) content
+  return $ CodeBlock content'
+markdownToContent (M.MText _ string) = return $ Text string
+markdownToContent d = Left ("Unexpected content: " ++ show d)
 
 -- Document to JSON
 
@@ -346,7 +391,7 @@ contentToJson (Link url content) =
     [ ( "link",
         J.JObject
           [ ("url", J.JString url),
-            ("content", contentToJson content)
+            ("content", J.JArray [contentToJson content])
           ]
       )
     ]
@@ -355,7 +400,7 @@ contentToJson (Image url alt) =
     [ ( "image",
         J.JObject
           [ ("url", J.JString url),
-            ("alt", J.JString alt)
+            ("alt", J.JArray [contentToJson alt])
           ]
       )
     ]
@@ -414,7 +459,7 @@ contentToXML (Code string) =
 contentToXML (Link url content) =
   X.XTag "link" [("url", url)] [contentToXML content]
 contentToXML (Image url alt) =
-  X.XTag "image" [("url", url)] [X.XText alt]
+  X.XTag "image" [("url", url)] [contentToXML alt]
 contentToXML (Paragraph content) =
   X.XTag "paragraph" [] $
     map contentToXML content
@@ -461,7 +506,8 @@ contentToMarkdown (Bold string) = M.MBold string
 contentToMarkdown (Code string) = M.MCode string
 contentToMarkdown (Link url (Text alt)) = M.MLink url alt
 contentToMarkdown (Link url _) = M.MLink url ""
-contentToMarkdown (Image url alt) = M.MImage url alt
+contentToMarkdown (Image url (Text alt)) = M.MImage url alt
+contentToMarkdown (Image url _) = M.MImage url ""
 contentToMarkdown (Paragraph content) =
   M.MParagraph $
     map contentToMarkdown content
